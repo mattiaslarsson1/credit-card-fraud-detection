@@ -1,1 +1,131 @@
+INSERT INTO bank (bank_name, location, phone, number_of_users) VALUES
+('Chase Bank', 'New York, NY', '212-555-1001', 5000000),
+('Bank of America', 'Charlotte, NC', '704-555-1002', 6000000),
+('Wells Fargo', 'San Francisco, CA', '415-555-1003', 5500000),
+('Citibank', 'New York, NY', '212-555-1004', 4800000),
+('Capital One', 'McLean, VA', '703-555-1005', 3000000),
+('TD Bank', 'Toronto, Canada', '416-555-1006', 2000000),
+('PNC Bank', 'Pittsburgh, PA', '412-555-1007', 2500000),
+('US Bank', 'Minneapolis, MN', '612-555-1008', 2700000),
+('HSBC', 'London, UK', '020-555-1009', 4000000),
+('Ally Bank', 'Detroit, MI', '313-555-1010', 1500000);
+
+
+
+INSERT INTO customer (bank_id, first_name, last_name, email, phone, date_of_birth, address) VALUES
+(1, 'John', 'Doe', 'john.doe@email.com', '201-555-2001', '1995-04-12', 'Hoboken, NJ'),
+(2, 'Jane', 'Smith', 'jane.smith@email.com', '201-555-2002', '1990-08-22', 'Jersey City, NJ'),
+(3, 'Michael', 'Brown', 'michael.brown@email.com', '201-555-2003', '1988-02-10', 'Newark, NJ'),
+(4, 'Emily', 'Davis', 'emily.davis@email.com', '201-555-2004', '1992-11-05', 'Brooklyn, NY'),
+(5, 'Daniel', 'Wilson', 'daniel.wilson@email.com', '201-555-2005', '1985-07-19', 'Queens, NY'),
+(6, 'Sophia', 'Taylor', 'sophia.taylor@email.com', '201-555-2006', '1998-01-30', 'Manhattan, NY'),
+(7, 'James', 'Anderson', 'james.anderson@email.com', '201-555-2007', '1993-06-14', 'Bronx, NY'),
+(8, 'Olivia', 'Thomas', 'olivia.thomas@email.com', '201-555-2008', '1996-03-27', 'Staten Island, NY'),
+(9, 'William', 'Jackson', 'william.jackson@email.com', '201-555-2009', '1987-09-09', 'Philadelphia, PA'),
+(10, 'Isabella', 'White', 'isabella.white@email.com', '201-555-2010', '1994-12-18', 'Boston, MA');
+
+
+INSERT INTO account (customer_id, account_type, balance, created_at, status) VALUES
+(1, 'Checking', 2500.50, NOW(), 'Active'),
+(2, 'Savings', 10200.75, NOW(), 'Active'),
+(3, 'Checking', 530.00, NOW(), 'Active'),
+(4, 'Savings', 8900.20, NOW(), 'Active'),
+(5, 'Checking', 1200.00, NOW(), 'Inactive'),
+(6, 'Savings', 15000.00, NOW(), 'Active'),
+(7, 'Checking', 300.10, NOW(), 'Active'),
+(8, 'Savings', 6700.80, NOW(), 'Active'),
+(9, 'Checking', 4200.00, NOW(), 'Active'),
+(10, 'Savings', 9800.50, NOW(), 'Active');
+INSERT INTO credit_card (account_id, card_number, expiration_date, cvv, card_status) VALUES
+(1, '4111111111111111', '2028-01-01', '123', 'Active'),
+(2, '4111111111111112', '2027-05-01', '234', 'Active'),
+(3, '4111111111111113', '2026-07-01', '345', 'Blocked'),
+(4, '4111111111111114', '2029-09-01', '456', 'Active'),
+(5, '4111111111111115', '2025-11-01', '567', 'Expired'),
+(6, '4111111111111116', '2028-03-01', '678', 'Active'),
+(7, '4111111111111117', '2027-12-01', '789', 'Active'),
+(8, '4111111111111118', '2026-06-01', '890', 'Blocked'),
+(9, '4111111111111119', '2029-10-01', '901', 'Active'),
+(10, '4111111111111120', '2028-08-01', '012', 'Active');
+
+
+INSERT INTO merchant (merchant_name, category, merchant_location) VALUES
+('Amazon', 'E-commerce', 'Online'),
+('Walmart', 'Retail', 'USA'),
+('Target', 'Retail', 'USA'),
+('Starbucks', 'Food & Beverage', 'Global'),
+('Apple Store', 'Electronics', 'USA'),
+('Best Buy', 'Electronics', 'USA'),
+('Uber', 'Transportation', 'Global'),
+('Netflix', 'Entertainment', 'Online'),
+('Costco', 'Wholesale', 'USA'),
+('Shell', 'Gas Station', 'Global');
+
+
+
+INSERT INTO device (customer_id, device_type, device_fingerprint, first_registered_date, device_status) VALUES
+(1, 'iPhone', 'abc123', NOW(), 'Active'),
+(2, 'Android', 'def456', NOW(), 'Active'),
+(3, 'Laptop', 'ghi789', NOW(), 'Inactive'),
+(4, 'Tablet', 'jkl012', NOW(), 'Active'),
+(5, 'iPhone', 'mno345', NOW(), 'Blocked'),
+(6, 'Android', 'pqr678', NOW(), 'Active'),
+(7, 'Laptop', 'stu901', NOW(), 'Active'),
+(8, 'Tablet', 'vwx234', NOW(), 'Active'),
+(9, 'iPhone', 'yz1234', NOW(), 'Active'),
+(10, 'Android', 'abc567', NOW(), 'Active');
+
+
+INSERT INTO transaction (card_id, merchant_id, device_id, transaction_amount, transaction_date, transaction_location, transaction_status) VALUES
+(1, 1, 1, 120.50, NOW(), 'Online', 'Completed'),
+(2, 2, 2, 45.00, NOW(), 'NJ', 'Completed'),
+(3, 3, 3, 300.00, NOW(), 'NY', 'Declined'),
+(4, 4, 4, 5.75, NOW(), 'NY', 'Completed'),
+(5, 5, 5, 999.99, NOW(), 'CA', 'Flagged'),
+(6, 6, 6, 250.00, NOW(), 'TX', 'Completed'),
+(7, 7, 7, 18.20, NOW(), 'NJ', 'Completed'),
+(8, 8, 8, 15.99, NOW(), 'Online', 'Completed'),
+(9, 9, 9, 600.00, NOW(), 'PA', 'Completed'),
+(10, 10, 10, 70.00, NOW(), 'NJ', 'Completed');
+
+
+INSERT INTO fraud_alert (transaction_id, alert_reason, alert_date, alert_status) VALUES
+(3, 'Unusual location', NOW(), 'Investigating'),
+(5, 'High amount', NOW(), 'Open'),
+(8, 'Multiple rapid transactions', NOW(), 'Closed'),
+(2, 'Suspicious device', NOW(), 'Closed'),
+(4, 'Foreign country usage', NOW(), 'Investigating'),
+(6, 'Unusual pattern', NOW(), 'Open'),
+(7, 'Velocity check failed', NOW(), 'Closed'),
+(9, 'Large purchase', NOW(), 'Open'),
+(1, 'First-time merchant', NOW(), 'Closed'),
+(10, 'Geo mismatch', NOW(), 'Investigating');
+
+
+
+INSERT INTO fraud_report (customer_id, transaction_id, report_date, resolution_status) VALUES
+(3, 3, NOW(), 'Pending'),
+(5, 5, NOW(), 'Resolved'),
+(8, 8, NOW(), 'Resolved'),
+(2, 2, NOW(), 'Closed'),
+(4, 4, NOW(), 'Pending'),
+(6, 6, NOW(), 'Pending'),
+(7, 7, NOW(), 'Resolved'),
+(9, 9, NOW(), 'Pending'),
+(1, 1, NOW(), 'Closed'),
+(10, 10, NOW(), 'Resolved');
+
+
+
+INSERT INTO authorized_user (account_id, name, relationship_type, date_added) VALUES
+(1, 'Alice Doe', 'Spouse', NOW()),
+(2, 'Bob Smith', 'Sibling', NOW()),
+(3, 'Charlie Brown', 'Parent', NOW()),
+(4, 'Daisy Davis', 'Friend', NOW()),
+(5, 'Ethan Wilson', 'Spouse', NOW()),
+(6, 'Fiona Taylor', 'Sibling', NOW()),
+(7, 'George Anderson', 'Parent', NOW()),
+(8, 'Hannah Thomas', 'Friend', NOW()),
+(9, 'Ian Jackson', 'Spouse', NOW()),
+(10, 'Julia White', 'Sibling', NOW());
 
