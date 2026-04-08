@@ -1,22 +1,21 @@
--- Bank Information
-CREATE TABLE bank_information (
+-- BANK
+CREATE TABLE bank (
     bank_id SERIAL PRIMARY KEY,
     bank_name VARCHAR(100),
     location VARCHAR(100),
-    phone_number VARCHAR(10), 
-    number_of_users VARCHAR(100)
+    phone VARCHAR(20), 
+    number_of_users INTEGER
 );
 
 -- CUSTOMER
 CREATE TABLE customer (
     customer_id SERIAL PRIMARY KEY,
-    bank_id FK,
+    bank_id INTEGER REFERENCES bank(bank_id),
     first_name VARCHAR(50),
     last_name VARCHAR(50),
     email VARCHAR(100),
     phone VARCHAR(20),
     date_of_birth DATE,
-    bank_id INTEGER REFERENCES bank(bank_id),
     address TEXT
 );
 
@@ -64,7 +63,6 @@ CREATE TABLE transaction (
     card_id INTEGER REFERENCES credit_card(card_id),
     merchant_id INTEGER REFERENCES merchant(merchant_id),
     device_id INTEGER REFERENCES device(device_id),
-    alert_id VARCHAR(10),
     transaction_amount DECIMAL(10,2),
     transaction_date TIMESTAMP,
     transaction_location TEXT,
@@ -88,7 +86,6 @@ CREATE TABLE fraud_report (
     report_date TIMESTAMP,
     resolution_status VARCHAR(20)
 );
-
 
 -- AUTHORIZED USER
 CREATE TABLE authorized_user (
