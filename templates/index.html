@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>My Supabase Data</title>
+</head>
+<body>
+    <h1>Supabase Dataset</h1>
+    
+    <table border="1">
+        <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Created At</th>
+        </tr>
+        {% for row in data %}
+        <tr>
+            <td>{{ row.id }}</td>
+            <td>{{ row.name }}</td>
+            <td>{{ row.created_at }}</td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="3">No data found or check your Supabase connection.</td>
+        </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>

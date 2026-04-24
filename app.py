@@ -39,28 +39,33 @@ def register():
         elif password != confirm_password:
             message = "Passwords do not match."
         else:
-            existing = supabase.table("app_user").select("*").eq("email", email).execute()
+            employee_check = supabase.table("employees").select("employee_id").eq("employee_id", employee_id).execute()
 
-            if existing.data:
-                message = "An account with that email already exists."
+            if not employee_check.data:
+                message = "Employee ID not found. Please contact your administrator."
             else:
-                password_hash = generate_password_hash(password)
+                existing = supabase.table("app_user").select("*").eq("email", email).execute()
 
-                response = supabase.table("app_user").insert({
-                    "employee_id": employee_id,
-                    "first_name": first_name,
-                    "last_name": last_name,
-                    "email": email,
-                    "password_hash": password_hash,
-                    "role": "analyst",
-                    "employee_id_verified": False,
-                    "is_active": True
-                }).execute()
-
-                if response.data:
-                    message = "Account created. Please ask an admin to verify your employee ID before login."
+                if existing.data:
+                    message = "An account with that email already exists."
                 else:
-                    message = "Error creating account."
+                    password_hash = generate_password_hash(password)
+
+                    response = supabase.table("app_user").insert({
+                        "employee_id": employee_id,
+                        "first_name": first_name,
+                        "last_name": last_name,
+                        "email": email,
+                        "password_hash": password_hash,
+                        "role": "analyst",
+                        "employee_id_verified": False,
+                        "is_active": True
+                    }).execute()
+
+                    if response.data:
+                        message = "Account created. Please ask an admin to verify your employee ID before login."
+                    else:
+                        message = "Error creating account."
 
     return render_template_string("""
     <html>
