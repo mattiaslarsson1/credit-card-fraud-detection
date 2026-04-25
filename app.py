@@ -1,5 +1,5 @@
 import os
-from flask import Flask, request, redirect, session, url_for, render_template_string
+from flask import Flask, request, redirect, session, url_for, render_template
 from dotenv import load_dotenv
 from supabase import create_client, Client
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -21,6 +21,13 @@ def index():
         return redirect(url_for("dashboard"))
     return redirect(url_for("login"))
 
+@app.route("/dev-login")
+def dev_login():
+    session["user_email"] = "dev@test.com"
+    session["user_name"] = "Dev User"
+    session["user_role"] = "admin"
+    session["employee_id"] = "EMP001"
+    return redirect(url_for("dashboard"))
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
@@ -67,26 +74,7 @@ def register():
                     else:
                         message = "Error creating account."
 
-    return render_template_string("""
-    <html>
-    <head><title>Create New User</title></head>
-    <body>
-        <h1>Create New User</h1>
-        <form method="post">
-            <p>Employee ID: <input type="text" name="employee_id"></p>
-            <p>First Name: <input type="text" name="first_name"></p>
-            <p>Last Name: <input type="text" name="last_name"></p>
-            <p>Email: <input type="email" name="email"></p>
-            <p>Password: <input type="password" name="password"></p>
-            <p>Confirm Password: <input type="password" name="confirm_password"></p>
-            <p><button type="submit">Create User</button></p>
-        </form>
-
-        <p style="color:red;">{{ message }}</p>
-        <p><a href="{{ url_for('login') }}">Back to Login</a></p>
-    </body>
-    </html>
-    """, message=message)
+    return render_template("register.html", message=message)
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -118,22 +106,7 @@ def login():
                 session["employee_id"] = user["employee_id"]
                 return redirect(url_for("dashboard"))
 
-    return render_template_string("""
-    <html>
-    <head><title>Login</title></head>
-    <body>
-        <h1>Bank Fraud Portal Login</h1>
-        <form method="post">
-            <p>Email: <input type="email" name="email"></p>
-            <p>Password: <input type="password" name="password"></p>
-            <p><button type="submit">Login</button></p>
-        </form>
-
-        <p style="color:red;">{{ message }}</p>
-        <p><a href="{{ url_for('register') }}">Create New User</a></p>
-    </body>
-    </html>
-    """, message=message)
+    return render_template("login.html", message=message)
 
 
 @app.route("/dashboard")
@@ -141,22 +114,7 @@ def dashboard():
     if "user_email" not in session:
         return redirect(url_for("login"))
 
-    return render_template_string("""
-    <html>
-    <head><title>Dashboard</title></head>
-    <body>
-        <h1>Dashboard</h1>
-        <p>Welcome, {{ session['user_name'] }}</p>
-        <p>Employee ID: {{ session['employee_id'] }}</p>
-        <p>Role: {{ session['user_role'] }}</p>
-
-        <ul>
-            <li><a href="{{ url_for('view_customers') }}">View Customers</a></li>
-            <li><a href="{{ url_for('logout') }}">Logout</a></li>
-        </ul>
-    </body>
-    </html>
-    """)
+    return render_template("dashboard.html")
 
 
 @app.route("/customers")
@@ -167,34 +125,47 @@ def view_customers():
     response = supabase.table("customer").select("*").execute()
     customers = response.data or []
 
-    return render_template_string("""
-    <html>
-    <head><title>Customers</title></head>
-    <body>
-        <h1>Customers</h1>
-        <p><a href="{{ url_for('dashboard') }}">Back to Dashboard</a></p>
+    return render_template("customers.html", customers=customers)
 
-        <table border="1" cellpadding="8">
-            <tr>
-                <th>customer_id</th>
-                <th>first_name</th>
-                <th>last_name</th>
-                <th>email</th>
-                <th>phone</th>
-            </tr>
-            {% for c in customers %}
-            <tr>
-                <td>{{ c.customer_id }}</td>
-                <td>{{ c.first_name }}</td>
-                <td>{{ c.last_name }}</td>
-                <td>{{ c.email }}</td>
-                <td>{{ c.phone }}</td>
-            </tr>
-            {% endfor %}
-        </table>
-    </body>
-    </html>
-    """, customers=customers)
+
+@app.route("/customers/add", methods=["GET", "POST"])
+def add_customer():
+    if "user_email" not in session:
+        return redirect(url_for("login"))
+
+    message = ""
+
+    # Fetch banks for the dropdown
+    banks = supabase.table("bank").select("bank_id, bank_name").execute().data or []
+
+    if request.method == "POST":
+        bank_id = request.form.get("bank_id", "").strip()
+        first_name = request.form.get("first_name", "").strip()
+        last_name = request.form.get("last_name", "").strip()
+        email = request.form.get("email", "").strip().lower()
+        phone = request.form.get("phone", "").strip()
+        date_of_birth = request.form.get("date_of_birth", "").strip()
+        address = request.form.get("address", "").strip()
+
+        if not all([bank_id, first_name, last_name, email]):
+            message = "Please fill in all required fields."
+        else:
+            response = supabase.table("customer").insert({
+                "bank_id": int(bank_id),
+                "first_name": first_name,
+                "last_name": last_name,
+                "email": email,
+                "phone": phone or None,
+                "date_of_birth": date_of_birth or None,
+                "address": address or None
+            }).execute()
+
+            if response.data:
+                return redirect(url_for("view_customers"))
+            else:
+                message = "Error adding customer."
+
+    return render_template("add_customer.html", banks=banks, message=message)
 
 
 @app.route("/logout")

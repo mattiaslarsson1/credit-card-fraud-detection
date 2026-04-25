@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Customers{% endblock %}
+{% block content %}
+    <h1>Customers</h1>
+    <p><a href="{{ url_for('dashboard') }}">Back to Dashboard</a></p>
+    <p><a href="{{ url_for('add_customer') }}">+ Add Customer</a></p>
+    <table border="1" cellpadding="8">
+        <tr>
+            <th>customer_id</th>
+            <th>first_name</th>
+            <th>last_name</th>
+            <th>email</th>
+            <th>phone</th>
+        </tr>
+        {% for c in customers %}
+        <tr>
+            <td>{{ c.customer_id }}</td>
+            <td>{{ c.first_name }}</td>
+            <td>{{ c.last_name }}</td>
+            <td>{{ c.email }}</td>
+            <td>{{ c.phone }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+{% endblock %}

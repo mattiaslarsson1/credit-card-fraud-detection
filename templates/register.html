@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Create New User{% endblock %}
+{% block content %}
+    <h1>Create New User</h1>
+    <form method="post">
+        <p>Employee ID: <input type="text" name="employee_id"></p>
+        <p>First Name: <input type="text" name="first_name"></p>
+        <p>Last Name: <input type="text" name="last_name"></p>
+        <p>Email: <input type="email" name="email"></p>
+        <p>Password: <input type="password" name="password"></p>
+        <p>Confirm Password: <input type="password" name="confirm_password"></p>
+        <p><button type="submit">Create User</button></p>
+    </form>
+    <p style="color:red;">{{ message }}</p>
+    <p><a href="{{ url_for('login') }}">Back to Login</a></p>
+{% endblock %}
