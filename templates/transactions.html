@@ -8,10 +8,9 @@
 </p>
 
 <form method="get">
-    <input type="text" name="search" placeholder="Search transaction, customer, merchant..." value="{{ search }}">
+    <input type="text" name="search" placeholder="Search transaction, customer, merchant, bank..." value="{{ search }}">
     <button type="submit">Search</button>
 </form>
-
 
 {% if error %}
     <p style="color: red;">Could not load transactions.</p>
@@ -27,6 +26,8 @@
             <th>Card ID</th>
             <th>Merchant ID</th>
             <th>Device ID</th>
+            <th>Bank</th>
+            <th>Bank Phone</th>
             <th>Amount</th>
             <th>Date</th>
             <th>Location</th>
@@ -39,11 +40,12 @@
             <td>{{ t.card_id }}</td>
             <td>{{ t.merchant_id }}</td>
             <td>{{ t.device_id }}</td>
+            <td>{{ t.bank_name }}</td>
+            <td>{{ t.bank_phone }}</td>
             <td>${{ t.amount }}</td>
             <td>{{ t.timestamp }}</td>
             <td>{{ t.location }}</td>
             <td>{{ t.status }}</td>
-                
         </tr>
         {% endfor %}
     </table>

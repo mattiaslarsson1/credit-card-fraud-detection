@@ -1,5 +1,5 @@
 import os
-from flask import Flask, request, redirect, session, url_for, render_template
+from flask import Flask, request, redirect, session, url_for, render_template, render_template_string
 from dotenv import load_dotenv
 from supabase import create_client, Client
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -272,13 +272,23 @@ def view_transactions():
     flagged_only = request.args.get("flagged_only", "") == "1"
 
     table_name, rows, error = get_transactions_data()
-    print(rows[0])
     transactions = []
+
+    # Fetch related tables
+    cards = supabase.table("credit_card").select("*").execute().data or []
+    accounts = supabase.table("account").select("*").execute().data or []
+    customers = supabase.table("customer").select("*").execute().data or []
+    banks = supabase.table("bank").select("*").execute().data or []
+
+    cards_by_id = {card["card_id"]: card for card in cards}
+    accounts_by_id = {account["account_id"]: account for account in accounts}
+    customers_by_id = {customer["customer_id"]: customer for customer in customers}
+    banks_by_id = {bank["bank_id"]: bank for bank in banks}
 
     if not error:
         for row in rows:
             transaction_id = str(row.get("transaction_id", ""))
-            card_id = str(row.get("card_id", ""))
+            card_id = row.get("card_id")
             merchant_id = str(row.get("merchant_id", ""))
             device_id = str(row.get("device_id", ""))
             amount = str(row.get("transaction_amount", ""))
@@ -286,15 +296,25 @@ def view_transactions():
             location = row.get("transaction_location", "")
             status = row.get("transaction_status", "")
 
+            card = cards_by_id.get(card_id, {})
+            account = accounts_by_id.get(card.get("account_id"), {})
+            customer = customers_by_id.get(account.get("customer_id"), {})
+            bank = banks_by_id.get(customer.get("bank_id"), {})
+
+            bank_name = bank.get("bank_name", "")
+            bank_phone = bank.get("phone", "")
+
             haystack = " ".join([
                 transaction_id,
-                card_id,
+                str(card_id),
                 merchant_id,
                 device_id,
                 amount,
                 timestamp,
                 location,
-                status
+                status,
+                bank_name,
+                bank_phone
             ]).lower()
 
             if search and search not in haystack:
@@ -308,7 +328,9 @@ def view_transactions():
                 "amount": amount,
                 "timestamp": timestamp,
                 "location": location,
-                "status": status
+                "status": status,
+                "bank_name": bank_name,
+                "bank_phone": bank_phone
             })
 
     return render_template(
