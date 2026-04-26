@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>Transactions</h1>
+
+<p>
+    <a href="{{ url_for('dashboard') }}">Back to Dashboard</a>
+</p>
+
+<form method="get">
+    <input type="text" name="search" placeholder="Search transaction, customer, merchant..." value="{{ search }}">
+    <button type="submit">Search</button>
+</form>
+
+
+{% if error %}
+    <p style="color: red;">Could not load transactions.</p>
+    <p>Tried tables: transactions, transaction, credit_card_transaction</p>
+    <p>{{ error }}</p>
+{% else %}
+    <p>Source table: {{ table_name }}</p>
+    <p>Total shown: {{ transactions|length }}</p>
+
+    <table border="1" cellpadding="8">
+        <tr>
+            <th>Transaction ID</th>
+            <th>Card ID</th>
+            <th>Merchant ID</th>
+            <th>Device ID</th>
+            <th>Amount</th>
+            <th>Date</th>
+            <th>Location</th>
+            <th>Status</th>
+        </tr>
+
+        {% for t in transactions %}
+        <tr>
+            <td>{{ t.transaction_id }}</td>
+            <td>{{ t.card_id }}</td>
+            <td>{{ t.merchant_id }}</td>
+            <td>{{ t.device_id }}</td>
+            <td>${{ t.amount }}</td>
+            <td>{{ t.timestamp }}</td>
+            <td>{{ t.location }}</td>
+            <td>{{ t.status }}</td>
+                
+        </tr>
+        {% endfor %}
+    </table>
+
+    {% if transactions|length == 0 %}
+        <p>No transactions found.</p>
+    {% endif %}
+{% endif %}
+{% endblock %}
