@@ -460,11 +460,12 @@ def suspicious_transactions():
     </html>
     """, transactions=transactions, threshold=HIGH_RISK_AMOUNT_THRESHOLD)
 
-
 @app.route("/logout")
 def logout():
     session.clear()
-    return redirect(url_for("login"))
+    response = redirect(url_for("login"))
+    response.delete_cookie(app.config["SESSION_COOKIE_NAME"])
+    return response
 
 @app.after_request
 def add_no_cache_headers(response):
