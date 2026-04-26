@@ -14,6 +14,63 @@ key = os.environ["SUPABASE_KEY"]
 
 supabase: Client = create_client(url, key)
 
+HIGH_RISK_AMOUNT_THRESHOLD = 500
+HIGH_RISK_ALERT_STATUSES = {"open", "investigating"}
+HIGH_RISK_TRANSACTION_STATUSES = {"flagged"}
+
+
+def get_high_risk_transactions():
+    transaction_response = supabase.table("transaction").select("*").execute()
+    transactions = transaction_response.data or []
+
+    alert_response = supabase.table("fraud_alert").select("*").execute()
+    alerts = alert_response.data or []
+    active_alerts_by_transaction_id = {}
+
+    for alert in alerts:
+        alert_status = (alert.get("alert_status") or "").lower()
+        if alert_status in HIGH_RISK_ALERT_STATUSES:
+            active_alerts_by_transaction_id[alert.get("transaction_id")] = alert
+
+    merchant_response = supabase.table("merchant").select("*").execute()
+    merchants = {
+        merchant["merchant_id"]: merchant
+        for merchant in merchant_response.data or []
+    }
+
+    high_risk_transactions = []
+
+    for transaction in transactions:
+        transaction_id = transaction.get("transaction_id")
+        transaction_status = (transaction.get("transaction_status") or "").lower()
+        amount = float(transaction.get("transaction_amount") or 0)
+        active_alert = active_alerts_by_transaction_id.get(transaction_id)
+
+        high_risk_reasons = []
+
+        if transaction_status in HIGH_RISK_TRANSACTION_STATUSES:
+            high_risk_reasons.append("Transaction already flagged")
+
+        if active_alert:
+            high_risk_reasons.append(active_alert.get("alert_reason") or "Active fraud alert")
+
+        if amount >= HIGH_RISK_AMOUNT_THRESHOLD:
+            high_risk_reasons.append("High amount")
+
+        if not high_risk_reasons:
+            continue
+
+        transaction["merchant"] = merchants.get(transaction.get("merchant_id"), {})
+        transaction["risk_reason"] = ", ".join(dict.fromkeys(high_risk_reasons))
+        transaction["alert_status"] = active_alert.get("alert_status") if active_alert else "Needs review"
+        high_risk_transactions.append(transaction)
+
+    return sorted(
+        high_risk_transactions,
+        key=lambda item: float(item.get("transaction_amount") or 0),
+        reverse=True
+    )
+
 
 @app.route("/")
 def index():
@@ -147,6 +204,7 @@ def dashboard():
 
         <ul>
             <li><a href="{{ url_for('view_customers') }}">View Customers</a></li>
+            <li><a href="{{ url_for('suspicious_transactions') }}">Suspicious Transactions</a></li>
             <li><a href="{{ url_for('logout') }}">Logout</a></li>
         </ul>
     </body>
@@ -190,6 +248,146 @@ def view_customers():
     </body>
     </html>
     """, customers=customers)
+
+
+@app.route("/suspicious-transactions")
+def suspicious_transactions():
+    if "user_email" not in session:
+        return redirect(url_for("login"))
+
+    transactions = get_high_risk_transactions()
+
+    return render_template_string("""
+    <html>
+    <head>
+        <title>Suspicious Transactions</title>
+        <style>
+            body {
+                background: #f4f7fb;
+                color: #1f2937;
+                font-family: Arial, sans-serif;
+                margin: 0;
+                padding: 32px;
+            }
+
+            .page-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 24px;
+            }
+
+            .back-link {
+                color: #2563eb;
+                text-decoration: none;
+            }
+
+            .summary-card {
+                background: #fff;
+                border-left: 5px solid #dc2626;
+                border-radius: 10px;
+                box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+                margin-bottom: 24px;
+                padding: 20px;
+            }
+
+            .summary-card h2 {
+                color: #dc2626;
+                margin: 0 0 8px;
+            }
+
+            table {
+                background: #fff;
+                border-collapse: collapse;
+                border-radius: 10px;
+                box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+                overflow: hidden;
+                width: 100%;
+            }
+
+            th, td {
+                border-bottom: 1px solid #e5e7eb;
+                padding: 14px 16px;
+                text-align: left;
+            }
+
+            th {
+                background: #111827;
+                color: #fff;
+                font-size: 13px;
+                letter-spacing: 0.04em;
+                text-transform: uppercase;
+            }
+
+            tr:last-child td {
+                border-bottom: none;
+            }
+
+            .risk-badge {
+                background: #fee2e2;
+                border: 1px solid #fecaca;
+                border-radius: 999px;
+                color: #991b1b;
+                display: inline-block;
+                font-weight: bold;
+                padding: 6px 10px;
+            }
+
+            .empty-state {
+                background: #fff;
+                border-radius: 10px;
+                box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+                padding: 32px;
+                text-align: center;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="page-header">
+            <div>
+                <h1>Suspicious Transactions</h1>
+                <p>Showing only high risk transactions that need analyst review.</p>
+            </div>
+            <a class="back-link" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
+        </div>
+
+        <div class="summary-card">
+            <h2>{{ transactions|length }} High Risk Flag{{ '' if transactions|length == 1 else 's' }}</h2>
+            <p>High risk includes flagged transactions, active fraud alerts, and transactions of ${{ threshold }} or more.</p>
+        </div>
+
+        {% if transactions %}
+        <table>
+            <tr>
+                <th>Transaction ID</th>
+                <th>Merchant</th>
+                <th>Amount</th>
+                <th>Location</th>
+                <th>Status</th>
+                <th>Alert Status</th>
+                <th>Risk Reason</th>
+            </tr>
+            {% for transaction in transactions %}
+            <tr>
+                <td>#{{ transaction.transaction_id }}</td>
+                <td>{{ transaction.merchant.merchant_name or 'Unknown merchant' }}</td>
+                <td>${{ "%.2f"|format(transaction.transaction_amount|float) }}</td>
+                <td>{{ transaction.transaction_location }}</td>
+                <td>{{ transaction.transaction_status }}</td>
+                <td>{{ transaction.alert_status }}</td>
+                <td><span class="risk-badge">{{ transaction.risk_reason }}</span></td>
+            </tr>
+            {% endfor %}
+        </table>
+        {% else %}
+        <div class="empty-state">
+            <h2>No high risk transactions found</h2>
+            <p>Only high risk items are shown here, so lower risk activity is hidden from this page.</p>
+        </div>
+        {% endif %}
+    </body>
+    </html>
+    """, transactions=transactions, threshold=HIGH_RISK_AMOUNT_THRESHOLD)
 
 
 @app.route("/logout")
