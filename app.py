@@ -13,6 +13,29 @@ url = os.environ["SUPABASE_URL"]
 key = os.environ["SUPABASE_KEY"]
 
 supabase: Client = create_client(url, key)
+def require_login():
+    return "user_email" in session
+
+
+def safe_get(row, *keys, default=""):
+    for key in keys:
+        if key in row and row[key] is not None:
+            return row[key]
+    return default
+
+
+def get_transactions_data():
+    candidate_tables = ["transactions", "transaction", "credit_card_transaction"]
+
+    last_error = None
+    for table_name in candidate_tables:
+        try:
+            response = supabase.table(table_name).select("*").execute()
+            return table_name, response.data or [], None
+        except Exception as e:
+            last_error = str(e)
+
+    return None, [], last_error
 
 
 @app.route("/")
@@ -166,6 +189,63 @@ def add_customer():
                 message = "Error adding customer."
 
     return render_template("add_customer.html", banks=banks, message=message)
+
+@app.route("/transactions")
+def view_transactions():
+    if not require_login():
+        return redirect(url_for("login"))
+
+    search = request.args.get("search", "").strip().lower()
+    flagged_only = request.args.get("flagged_only", "") == "1"
+
+    table_name, rows, error = get_transactions_data()
+    print(rows[0])
+    transactions = []
+
+    if not error:
+        for row in rows:
+            transaction_id = str(row.get("transaction_id", ""))
+            card_id = str(row.get("card_id", ""))
+            merchant_id = str(row.get("merchant_id", ""))
+            device_id = str(row.get("device_id", ""))
+            amount = str(row.get("transaction_amount", ""))
+            timestamp = row.get("transaction_date", "")
+            location = row.get("transaction_location", "")
+            status = row.get("transaction_status", "")
+
+            haystack = " ".join([
+                transaction_id,
+                card_id,
+                merchant_id,
+                device_id,
+                amount,
+                timestamp,
+                location,
+                status
+            ]).lower()
+
+            if search and search not in haystack:
+                continue
+
+            transactions.append({
+                "transaction_id": transaction_id,
+                "card_id": card_id,
+                "merchant_id": merchant_id,
+                "device_id": device_id,
+                "amount": amount,
+                "timestamp": timestamp,
+                "location": location,
+                "status": status
+            })
+
+    return render_template(
+        "transactions.html",
+        transactions=transactions,
+        search=search,
+        flagged_only=flagged_only,
+        error=error,
+        table_name=table_name
+    )
 
 
 @app.route("/logout")

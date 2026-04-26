@@ -7,6 +7,7 @@
     <p>Role: {{ session['user_role'] }}</p>
     <ul>
         <li><a href="{{ url_for('view_customers') }}">View Customers</a></li>
+        <li><a href="{{ url_for('view_transactions') }}">View Transactions</a></li>
         <li><a href="{{ url_for('logout') }}">Logout</a></li>
     </ul>
 {% endblock %}
