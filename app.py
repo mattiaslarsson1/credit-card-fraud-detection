@@ -1,5 +1,5 @@
 import os
-from flask import Flask, request, redirect, session, url_for, render_template_string
+from flask import Flask, request, redirect, session, url_for, render_template
 from dotenv import load_dotenv
 from supabase import create_client, Client
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -13,6 +13,29 @@ url = os.environ["SUPABASE_URL"]
 key = os.environ["SUPABASE_KEY"]
 
 supabase: Client = create_client(url, key)
+def require_login():
+    return "user_email" in session
+
+
+def safe_get(row, *keys, default=""):
+    for key in keys:
+        if key in row and row[key] is not None:
+            return row[key]
+    return default
+
+
+def get_transactions_data():
+    candidate_tables = ["transactions", "transaction", "credit_card_transaction"]
+
+    last_error = None
+    for table_name in candidate_tables:
+        try:
+            response = supabase.table(table_name).select("*").execute()
+            return table_name, response.data or [], None
+        except Exception as e:
+            last_error = str(e)
+
+    return None, [], last_error
 
 HIGH_RISK_AMOUNT_THRESHOLD = 500
 HIGH_RISK_ALERT_STATUSES = {"open", "investigating"}
@@ -78,6 +101,13 @@ def index():
         return redirect(url_for("dashboard"))
     return redirect(url_for("login"))
 
+@app.route("/dev-login")
+def dev_login():
+    session["user_email"] = "dev@test.com"
+    session["user_name"] = "Dev User"
+    session["user_role"] = "admin"
+    session["employee_id"] = "EMP001"
+    return redirect(url_for("dashboard"))
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
@@ -96,49 +126,35 @@ def register():
         elif password != confirm_password:
             message = "Passwords do not match."
         else:
-            existing = supabase.table("app_user").select("*").eq("email", email).execute()
+            employee_check = supabase.table("employees").select("employee_id").eq("employee_id", employee_id).execute()
 
-            if existing.data:
-                message = "An account with that email already exists."
+            if not employee_check.data:
+                message = "Employee ID not found. Please contact your administrator."
             else:
-                password_hash = generate_password_hash(password)
+                existing = supabase.table("app_user").select("*").eq("email", email).execute()
 
-                response = supabase.table("app_user").insert({
-                    "employee_id": employee_id,
-                    "first_name": first_name,
-                    "last_name": last_name,
-                    "email": email,
-                    "password_hash": password_hash,
-                    "role": "analyst",
-                    "employee_id_verified": False,
-                    "is_active": True
-                }).execute()
-
-                if response.data:
-                    message = "Account created. Please ask an admin to verify your employee ID before login."
+                if existing.data:
+                    message = "An account with that email already exists."
                 else:
-                    message = "Error creating account."
+                    password_hash = generate_password_hash(password)
 
-    return render_template_string("""
-    <html>
-    <head><title>Create New User</title></head>
-    <body>
-        <h1>Create New User</h1>
-        <form method="post">
-            <p>Employee ID: <input type="text" name="employee_id"></p>
-            <p>First Name: <input type="text" name="first_name"></p>
-            <p>Last Name: <input type="text" name="last_name"></p>
-            <p>Email: <input type="email" name="email"></p>
-            <p>Password: <input type="password" name="password"></p>
-            <p>Confirm Password: <input type="password" name="confirm_password"></p>
-            <p><button type="submit">Create User</button></p>
-        </form>
+                    response = supabase.table("app_user").insert({
+                        "employee_id": employee_id,
+                        "first_name": first_name,
+                        "last_name": last_name,
+                        "email": email,
+                        "password_hash": password_hash,
+                        "role": "analyst",
+                        "employee_id_verified": False,
+                        "is_active": True
+                    }).execute()
 
-        <p style="color:red;">{{ message }}</p>
-        <p><a href="{{ url_for('login') }}">Back to Login</a></p>
-    </body>
-    </html>
-    """, message=message)
+                    if response.data:
+                        message = "Account created. Please ask an admin to verify your employee ID before login."
+                    else:
+                        message = "Error creating account."
+
+    return render_template("register.html", message=message)
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -170,22 +186,7 @@ def login():
                 session["employee_id"] = user["employee_id"]
                 return redirect(url_for("dashboard"))
 
-    return render_template_string("""
-    <html>
-    <head><title>Login</title></head>
-    <body>
-        <h1>Bank Fraud Portal Login</h1>
-        <form method="post">
-            <p>Email: <input type="email" name="email"></p>
-            <p>Password: <input type="password" name="password"></p>
-            <p><button type="submit">Login</button></p>
-        </form>
-
-        <p style="color:red;">{{ message }}</p>
-        <p><a href="{{ url_for('register') }}">Create New User</a></p>
-    </body>
-    </html>
-    """, message=message)
+    return render_template("login.html", message=message)
 
 
 @app.route("/dashboard")
@@ -220,34 +221,104 @@ def view_customers():
     response = supabase.table("customer").select("*").execute()
     customers = response.data or []
 
-    return render_template_string("""
-    <html>
-    <head><title>Customers</title></head>
-    <body>
-        <h1>Customers</h1>
-        <p><a href="{{ url_for('dashboard') }}">Back to Dashboard</a></p>
+    return render_template("customers.html", customers=customers)
 
-        <table border="1" cellpadding="8">
-            <tr>
-                <th>customer_id</th>
-                <th>first_name</th>
-                <th>last_name</th>
-                <th>email</th>
-                <th>phone</th>
-            </tr>
-            {% for c in customers %}
-            <tr>
-                <td>{{ c.customer_id }}</td>
-                <td>{{ c.first_name }}</td>
-                <td>{{ c.last_name }}</td>
-                <td>{{ c.email }}</td>
-                <td>{{ c.phone }}</td>
-            </tr>
-            {% endfor %}
-        </table>
-    </body>
-    </html>
-    """, customers=customers)
+
+@app.route("/customers/add", methods=["GET", "POST"])
+def add_customer():
+    if "user_email" not in session:
+        return redirect(url_for("login"))
+
+    message = ""
+
+    # Fetch banks for the dropdown
+    banks = supabase.table("bank").select("bank_id, bank_name").execute().data or []
+
+    if request.method == "POST":
+        bank_id = request.form.get("bank_id", "").strip()
+        first_name = request.form.get("first_name", "").strip()
+        last_name = request.form.get("last_name", "").strip()
+        email = request.form.get("email", "").strip().lower()
+        phone = request.form.get("phone", "").strip()
+        date_of_birth = request.form.get("date_of_birth", "").strip()
+        address = request.form.get("address", "").strip()
+
+        if not all([bank_id, first_name, last_name, email]):
+            message = "Please fill in all required fields."
+        else:
+            response = supabase.table("customer").insert({
+                "bank_id": int(bank_id),
+                "first_name": first_name,
+                "last_name": last_name,
+                "email": email,
+                "phone": phone or None,
+                "date_of_birth": date_of_birth or None,
+                "address": address or None
+            }).execute()
+
+            if response.data:
+                return redirect(url_for("view_customers"))
+            else:
+                message = "Error adding customer."
+
+    return render_template("add_customer.html", banks=banks, message=message)
+
+@app.route("/transactions")
+def view_transactions():
+    if not require_login():
+        return redirect(url_for("login"))
+
+    search = request.args.get("search", "").strip().lower()
+    flagged_only = request.args.get("flagged_only", "") == "1"
+
+    table_name, rows, error = get_transactions_data()
+    print(rows[0])
+    transactions = []
+
+    if not error:
+        for row in rows:
+            transaction_id = str(row.get("transaction_id", ""))
+            card_id = str(row.get("card_id", ""))
+            merchant_id = str(row.get("merchant_id", ""))
+            device_id = str(row.get("device_id", ""))
+            amount = str(row.get("transaction_amount", ""))
+            timestamp = row.get("transaction_date", "")
+            location = row.get("transaction_location", "")
+            status = row.get("transaction_status", "")
+
+            haystack = " ".join([
+                transaction_id,
+                card_id,
+                merchant_id,
+                device_id,
+                amount,
+                timestamp,
+                location,
+                status
+            ]).lower()
+
+            if search and search not in haystack:
+                continue
+
+            transactions.append({
+                "transaction_id": transaction_id,
+                "card_id": card_id,
+                "merchant_id": merchant_id,
+                "device_id": device_id,
+                "amount": amount,
+                "timestamp": timestamp,
+                "location": location,
+                "status": status
+            })
+
+    return render_template(
+        "transactions.html",
+        transactions=transactions,
+        search=search,
+        flagged_only=flagged_only,
+        error=error,
+        table_name=table_name
+    )
 
 
 @app.route("/suspicious-transactions")

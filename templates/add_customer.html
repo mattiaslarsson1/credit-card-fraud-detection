@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Add Customer{% endblock %}
+{% block content %}
+    <h1>Add Customer</h1>
+    <form method="post">
+        <p>Bank:
+            <select name="bank_id">
+                {% for b in banks %}
+                <option value="{{ b.bank_id }}">{{ b.bank_name }}</option>
+                {% endfor %}
+            </select>
+        </p>
+        <p>First Name*: <input type="text" name="first_name"></p>
+        <p>Last Name*: <input type="text" name="last_name"></p>
+        <p>Email*: <input type="email" name="email"></p>
+        <p>Phone: <input type="text" name="phone"></p>
+        <p>Date of Birth: <input type="date" name="date_of_birth"></p>
+        <p>Address: <input type="text" name="address"></p>
+        <p><button type="submit">Add Customer</button></p>
+    </form>
+    <p style="color:red;">{{ message }}</p>
+    <p><a href="{{ url_for('view_customers') }}">Back to Customers</a></p>
+{% endblock %}
