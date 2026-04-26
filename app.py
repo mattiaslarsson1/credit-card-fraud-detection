@@ -1,5 +1,5 @@
 import os
-from flask import Flask, request, redirect, session, url_for, render_template
+from flask import Flask, request, redirect, session, url_for, render_template, render_template_string
 from dotenv import load_dotenv
 from supabase import create_client, Client
 from werkzeug.security import generate_password_hash, check_password_hash
