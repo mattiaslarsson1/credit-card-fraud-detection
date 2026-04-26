@@ -315,6 +315,35 @@ def suspicious_transactions():
     return render_template("suspicious_transactions.html", transactions=transactions, threshold=HIGH_RISK_AMOUNT_THRESHOLD)
 
 
+@app.route("/suspicious-transactions/<int:transaction_id>/clear", methods=["POST"])
+def clear_suspicious_transaction(transaction_id):
+    if "user_email" not in session:
+        return redirect(url_for("login"))
+
+    # Resolve all open fraud alerts for this transaction
+    supabase.table("fraud_alert").update({"alert_status": "resolved"}).eq("transaction_id", transaction_id).execute()
+
+    # Mark the transaction itself as cleared
+    supabase.table("transaction").update({"transaction_status": "cleared"}).eq("transaction_id", transaction_id).execute()
+
+    return redirect(url_for("suspicious_transactions"))
+
+
+@app.route("/suspicious-transactions/<int:transaction_id>/delete", methods=["POST"])
+def delete_suspicious_transaction(transaction_id):
+    if "user_email" not in session:
+        return redirect(url_for("login"))
+
+    # Delete associated records first (foreign key constraints)
+    supabase.table("fraud_alert").delete().eq("transaction_id", transaction_id).execute()
+    supabase.table("fraud_report").delete().eq("transaction_id", transaction_id).execute()
+
+    # Delete the transaction
+    supabase.table("transaction").delete().eq("transaction_id", transaction_id).execute()
+
+    return redirect(url_for("suspicious_transactions"))
+
+
 @app.route("/logout")
 def logout():
     session.clear()
