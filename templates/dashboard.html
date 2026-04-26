@@ -1,13 +1,30 @@
 {% extends "base.html" %}
+
 {% block title %}Dashboard{% endblock %}
+
 {% block content %}
     <h1>Dashboard</h1>
-    <p>Welcome, {{ session['user_name'] }}</p>
-    <p>Employee ID: {{ session['employee_id'] }}</p>
-    <p>Role: {{ session['user_role'] }}</p>
-    <ul>
-        <li><a href="{{ url_for('view_customers') }}">View Customers</a></li>
-        <li><a href="{{ url_for('view_transactions') }}">View Transactions</a></li>
-        <li><a href="{{ url_for('logout') }}">Logout</a></li>
-    </ul>
+
+    <div class="card">
+        <h2>Welcome, {{ session['user_name'] }}</h2>
+        <p><strong>Employee ID:</strong> {{ session['employee_id'] }}</p>
+        <p><strong>Role:</strong> {{ session['user_role'] }}</p>
+    </div>
+
+    <div class="dashboard-grid">
+        <a class="dashboard-card" href="{{ url_for('view_customers') }}">
+            <h3>Customers</h3>
+            <p>View and manage customer records.</p>
+        </a>
+
+        <a class="dashboard-card" href="{{ url_for('view_transactions') }}">
+            <h3>Transactions</h3>
+            <p>Search and review transaction activity.</p>
+        </a>
+
+        <a class="dashboard-card danger" href="{{ url_for('suspicious_transactions') }}">
+            <h3>Suspicious Transactions</h3>
+            <p>Review high-risk fraud activity.</p>
+        </a>
+    </div>
 {% endblock %}
