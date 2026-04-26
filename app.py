@@ -161,6 +161,9 @@ def register():
 def login():
     message = ""
 
+    if request.method == "GET":
+        session.clear()
+
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
