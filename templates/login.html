@@ -1,22 +1,49 @@
 {% extends "base.html" %}
+
 {% block title %}Login{% endblock %}
+
 {% block content %}
     <h1>Bank Fraud Portal Login</h1>
-<form method="post" autocomplete="off">
-    <p>
-        Email:
-        <input type="email" name="email" autocomplete="off" value="">
-    </p>
 
-    <p>
-        Password:
-        <input type="password" name="password" autocomplete="new-password" value="">
-    </p>
+    <form method="post" autocomplete="off">
+        <p>
+            Email:
+            <input
+                type="email"
+                name="email"
+                autocomplete="off"
+                value=""
+                readonly
+                onfocus="this.removeAttribute('readonly');"
+            >
+        </p>
 
-    <p>
-        <button type="submit">Login</button>
-    </p>
-</form>
+        <p>
+            Password:
+            <input
+                type="password"
+                name="password"
+                autocomplete="new-password"
+                value=""
+                readonly
+                onfocus="this.removeAttribute('readonly');"
+            >
+        </p>
+
+        <p>
+            <button type="submit">Login</button>
+        </p>
+    </form>
+
     <p style="color:red;">{{ message }}</p>
+
     <p><a href="{{ url_for('register') }}">Create New User</a></p>
+
+    <script>
+        window.addEventListener("pageshow", function (event) {
+            if (event.persisted) {
+                window.location.reload();
+            }
+        });
+    </script>
 {% endblock %}
