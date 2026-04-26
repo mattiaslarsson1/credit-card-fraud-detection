@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Signing In</title>
+</head>
+<body>
+    <script>
+        window.sessionStorage.setItem("bankFraudSessionToken", {{ session_token|tojson }});
+        window.location.replace({{ next_url|tojson }});
+    </script>
+    <noscript>
+        <p>JavaScript is required to finish signing in.</p>
+        <p><a href="{{ url_for('logout') }}">Back to Login</a></p>
+    </noscript>
+</body>
+</html>
