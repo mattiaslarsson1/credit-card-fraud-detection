@@ -466,6 +466,13 @@ def logout():
     session.clear()
     return redirect(url_for("login"))
 
+@app.after_request
+def add_no_cache_headers(response):
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
