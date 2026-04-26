@@ -46,4 +46,10 @@
             }
         });
     </script>
+<script>
+    window.addEventListener("pageshow", function () {
+        document.querySelector("input[name='email']").value = "";
+        document.querySelector("input[name='password']").value = "";
+    });
+</script>
 {% endblock %}
