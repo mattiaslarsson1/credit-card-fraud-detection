@@ -459,6 +459,16 @@ def suspicious_transactions():
     </body>
     </html>
     """, transactions=transactions, threshold=HIGH_RISK_AMOUNT_THRESHOLD)
+    
+@app.route("/")
+def index():
+    session.clear()
+    return redirect(url_for("login"))
+
+@app.route("/logout-beacon", methods=["POST"])
+def logout_beacon():
+    session.clear()
+    return "", 204
 
 @app.route("/logout")
 def logout():
