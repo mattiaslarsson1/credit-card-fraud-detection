@@ -160,8 +160,7 @@ def get_high_risk_transactions():
 
 @app.route("/")
 def index():
-    if "user_email" in session:
-        return redirect(url_for("dashboard"))
+    session.clear()
     return redirect(url_for("login"))
 
 @app.route("/dev-login")
