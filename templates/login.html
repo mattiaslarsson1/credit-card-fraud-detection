@@ -11,7 +11,7 @@
             <input
                 type="email"
                 name="email"
-                autocomplete="off"
+                autocomplete="new-email"
                 value=""
                 readonly
                 onfocus="this.removeAttribute('readonly');"
@@ -40,16 +40,17 @@
     <p><a href="{{ url_for('register') }}">Create New User</a></p>
 
     <script>
-        window.addEventListener("pageshow", function (event) {
-            if (event.persisted) {
-                window.location.reload();
+        window.addEventListener("pageshow", function () {
+            const emailInput = document.querySelector("input[name='email']");
+            const passwordInput = document.querySelector("input[name='password']");
+
+            if (emailInput) {
+                emailInput.value = "";
+            }
+
+            if (passwordInput) {
+                passwordInput.value = "";
             }
         });
     </script>
-<script>
-    window.addEventListener("pageshow", function () {
-        document.querySelector("input[name='email']").value = "";
-        document.querySelector("input[name='password']").value = "";
-    });
-</script>
 {% endblock %}
