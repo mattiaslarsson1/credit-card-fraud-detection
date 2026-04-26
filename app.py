@@ -103,6 +103,41 @@ def get_transactions_data():
 HIGH_RISK_AMOUNT_THRESHOLD = 500
 HIGH_RISK_ALERT_STATUSES = {"open", "investigating"}
 HIGH_RISK_TRANSACTION_STATUSES = {"flagged"}
+EMPLOYEE_TABLES = ("employees", "employee")
+
+
+def employee_id_candidates(employee_id):
+    candidates = [
+        employee_id,
+        employee_id.upper(),
+        employee_id.lower(),
+    ]
+
+    digits = "".join(character for character in employee_id if character.isdigit())
+    if digits:
+        candidates.extend([digits, str(int(digits)), int(digits)])
+
+    return list(dict.fromkeys(candidates))
+
+
+def find_existing_employee_id(employee_id):
+    for table_name in EMPLOYEE_TABLES:
+        for candidate in employee_id_candidates(employee_id):
+            try:
+                response = (
+                    supabase
+                    .table(table_name)
+                    .select("employee_id")
+                    .eq("employee_id", candidate)
+                    .execute()
+                )
+            except Exception:
+                continue
+
+            if response.data:
+                return response.data[0]["employee_id"]
+
+    return None
 
 
 def get_high_risk_transactions():
@@ -195,9 +230,9 @@ def register():
         elif password != confirm_password:
             message = "Passwords do not match."
         else:
-            employee_check = supabase.table("employees").select("employee_id").eq("employee_id", employee_id).execute()
+            verified_employee_id = find_existing_employee_id(employee_id)
 
-            if not employee_check.data:
+            if verified_employee_id is None:
                 message = "Employee ID not found. Please contact your administrator."
             else:
                 existing = supabase.table("app_user").select("*").eq("email", email).execute()
@@ -208,7 +243,7 @@ def register():
                     password_hash = generate_password_hash(password)
 
                     response = supabase.table("app_user").insert({
-                        "employee_id": employee_id,
+                        "employee_id": verified_employee_id,
                         "first_name": first_name,
                         "last_name": last_name,
                         "email": email,
