@@ -330,135 +330,52 @@ def suspicious_transactions():
 
     return render_template_string("""
     <html>
-    <head>
-        <title>Suspicious Transactions</title>
-        <style>
-            body {
-                background: #f4f7fb;
-                color: #1f2937;
-                font-family: Arial, sans-serif;
-                margin: 0;
-                padding: 32px;
-            }
-
-            .page-header {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                margin-bottom: 24px;
-            }
-
-            .back-link {
-                color: #2563eb;
-                text-decoration: none;
-            }
-
-            .summary-card {
-                background: #fff;
-                border-left: 5px solid #dc2626;
-                border-radius: 10px;
-                box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
-                margin-bottom: 24px;
-                padding: 20px;
-            }
-
-            .summary-card h2 {
-                color: #dc2626;
-                margin: 0 0 8px;
-            }
-
-            table {
-                background: #fff;
-                border-collapse: collapse;
-                border-radius: 10px;
-                box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
-                overflow: hidden;
-                width: 100%;
-            }
-
-            th, td {
-                border-bottom: 1px solid #e5e7eb;
-                padding: 14px 16px;
-                text-align: left;
-            }
-
-            th {
-                background: #111827;
-                color: #fff;
-                font-size: 13px;
-                letter-spacing: 0.04em;
-                text-transform: uppercase;
-            }
-
-            tr:last-child td {
-                border-bottom: none;
-            }
-
-            .risk-badge {
-                background: #fee2e2;
-                border: 1px solid #fecaca;
-                border-radius: 999px;
-                color: #991b1b;
-                display: inline-block;
-                font-weight: bold;
-                padding: 6px 10px;
-            }
-
-            .empty-state {
-                background: #fff;
-                border-radius: 10px;
-                box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
-                padding: 32px;
-                text-align: center;
-            }
-        </style>
-    </head>
+    <head><title>Suspicious Transactions</title></head>
     <body>
-        <div class="page-header">
-            <div>
-                <h1>Suspicious Transactions</h1>
-                <p>Showing only high risk transactions that need analyst review.</p>
-            </div>
-            <a class="back-link" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
-        </div>
+        <h1>Suspicious Transactions</h1>
+        <p><a href="{{ url_for('dashboard') }}">Back to Dashboard</a></p>
 
-        <div class="summary-card">
-            <h2>{{ transactions|length }} High Risk Flag{{ '' if transactions|length == 1 else 's' }}</h2>
-            <p>High risk includes flagged transactions, active fraud alerts, and transactions of ${{ threshold }} or more.</p>
-        </div>
+        <p>
+            Showing {{ transactions|length }} high-risk transaction{{ '' if transactions|length == 1 else 's' }}.
+        </p>
 
-        {% if transactions %}
-        <table>
+        <table border="1" cellpadding="8">
             <tr>
-                <th>Transaction ID</th>
-                <th>Merchant</th>
-                <th>Amount</th>
-                <th>Location</th>
-                <th>Status</th>
-                <th>Alert Status</th>
-                <th>Risk Reason</th>
+                <th>transaction_id</th>
+                <th>card_id</th>
+                <th>merchant_id</th>
+                <th>device_id</th>
+                <th>transaction_amount</th>
+                <th>transaction_date</th>
+                <th>transaction_location</th>
+                <th>transaction_status</th>
+                <th>alert_status</th>
+                <th>risk_reason</th>
             </tr>
+
             {% for transaction in transactions %}
             <tr>
-                <td>#{{ transaction.transaction_id }}</td>
-                <td>{{ transaction.merchant.merchant_name or 'Unknown merchant' }}</td>
-                <td>${{ "%.2f"|format(transaction.transaction_amount|float) }}</td>
+                <td>{{ transaction.transaction_id }}</td>
+                <td>{{ transaction.card_id }}</td>
+                <td>{{ transaction.merchant_id }}</td>
+                <td>{{ transaction.device_id }}</td>
+                <td>{{ transaction.transaction_amount }}</td>
+                <td>{{ transaction.transaction_date }}</td>
                 <td>{{ transaction.transaction_location }}</td>
                 <td>{{ transaction.transaction_status }}</td>
                 <td>{{ transaction.alert_status }}</td>
-                <td><span class="risk-badge">{{ transaction.risk_reason }}</span></td>
+                <td>{{ transaction.risk_reason }}</td>
             </tr>
             {% endfor %}
         </table>
-        {% else %}
-        <div class="empty-state">
-            <h2>No high risk transactions found</h2>
-            <p>Only high risk items are shown here, so lower risk activity is hidden from this page.</p>
-        </div>
+
+        {% if transactions|length == 0 %}
+            <p>No suspicious transactions found.</p>
         {% endif %}
     </body>
     </html>
-    """, transactions=transactions, threshold=HIGH_RISK_AMOUNT_THRESHOLD)
+    """, transactions=transactions)
+
 
 
 @app.route("/logout")
