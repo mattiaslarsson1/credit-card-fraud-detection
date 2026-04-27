@@ -2,9 +2,13 @@ import os
 import json
 import uuid
 from datetime import datetime, timezone
+from contextlib import contextmanager
+from urllib.parse import urlparse, unquote
+
+import pg8000.dbapi
+
 from flask import Flask, request, redirect, session, url_for, render_template, render_template_string
 from dotenv import load_dotenv
-from supabase import create_client, Client
 from werkzeug.security import generate_password_hash, check_password_hash
 
 load_dotenv()
@@ -13,29 +17,70 @@ app = Flask(__name__)
 app.secret_key = os.environ["FLASK_SECRET_KEY"]
 app.config["SESSION_PERMANENT"] = False
 
-url = os.environ["SUPABASE_URL"]
-key = os.environ["SUPABASE_SERVICE_KEY"]
+DATABASE_URL = os.environ["DATABASE_URL"]
+_db_url = urlparse(DATABASE_URL)
+DB_CONFIG = {
+    "user": unquote(_db_url.username) if _db_url.username else None,
+    "password": unquote(_db_url.password) if _db_url.password else None,
+    "host": _db_url.hostname,
+    "port": _db_url.port or 5432,
+    "database": _db_url.path.lstrip("/"),
+    "ssl_context": True,
+}
 
-supabase: Client = create_client(url, key)
+
+def open_connection():
+    return pg8000.dbapi.connect(**DB_CONFIG)
+
+
+@contextmanager
+def get_cursor():
+    conn = open_connection()
+    try:
+        cur = conn.cursor()
+        try:
+            yield cur
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            cur.close()
+    finally:
+        conn.close()
+
+
+def db_query(sql, params=None):
+    with get_cursor() as cur:
+        cur.execute(sql, params or ())
+        if cur.description is None:
+            return None
+        columns = [col[0] for col in cur.description]
+        return [dict(zip(columns, row)) for row in cur.fetchall()]
+
+
+def db_execute(sql, params=None):
+    with get_cursor() as cur:
+        cur.execute(sql, params or ())
+
+
 def require_login():
     return "user_email" in session
 
 
 SECURITY_DEPARTMENT = "security"
 
+
 def get_role_for_employee(employee_id):
     if not employee_id:
         return "analyst"
-    employee = (
-        supabase.table("employees")
-        .select("department")
-        .eq("employee_id", employee_id)
-        .execute()
-        .data
+    rows = db_query(
+        "SELECT department FROM employees WHERE employee_id = %s",
+        (employee_id,),
     )
-    if not employee:
+    if not rows:
         return "analyst"
-    department = (employee[0].get("department") or "").strip().lower()
+    department = (rows[0].get("department") or "").strip().lower()
     return "admin" if department == SECURITY_DEPARTMENT else "analyst"
 
 
@@ -116,12 +161,13 @@ def get_transactions_data():
     last_error = None
     for table_name in candidate_tables:
         try:
-            response = supabase.table(table_name).select("*").execute()
-            return table_name, response.data or [], None
+            rows = db_query(f"SELECT * FROM {table_name}")
+            return table_name, rows or [], None
         except Exception as e:
             last_error = str(e)
 
     return None, [], last_error
+
 
 HIGH_RISK_AMOUNT_THRESHOLD = 500
 HIGH_RISK_ALERT_STATUSES = {"open", "investigating"}
@@ -129,29 +175,23 @@ HIGH_RISK_TRANSACTION_STATUSES = {"flagged"}
 
 
 def get_high_risk_transactions():
-    transaction_response = supabase.table("transaction").select("*").execute()
-    transactions = transaction_response.data or []
+    transactions = db_query("SELECT * FROM transaction") or []
+    alerts = db_query("SELECT * FROM fraud_alert") or []
 
-    alert_response = supabase.table("fraud_alert").select("*").execute()
-    alerts = alert_response.data or []
     active_alerts_by_transaction_id = {}
     latest_alert_by_transaction_id = {}
 
     for alert in alerts:
         alert_status = (alert.get("alert_status") or "").lower()
         tid = alert.get("transaction_id")
-        # Track the most recent alert for display regardless of status
         existing = latest_alert_by_transaction_id.get(tid)
         if not existing or (alert.get("alert_id", 0) > existing.get("alert_id", 0)):
             latest_alert_by_transaction_id[tid] = alert
         if alert_status in HIGH_RISK_ALERT_STATUSES:
             active_alerts_by_transaction_id[tid] = alert
 
-    merchant_response = supabase.table("merchant").select("*").execute()
-    merchants = {
-        merchant["merchant_id"]: merchant
-        for merchant in merchant_response.data or []
-    }
+    merchant_rows = db_query("SELECT * FROM merchant") or []
+    merchants = {m["merchant_id"]: m for m in merchant_rows}
 
     REVIEWED_ALERT_STATUSES = {"cleared"}
 
@@ -164,7 +204,6 @@ def get_high_risk_transactions():
         active_alert = active_alerts_by_transaction_id.get(transaction_id)
         latest_alert = latest_alert_by_transaction_id.get(transaction_id)
 
-        # Skip if already reviewed by an analyst
         if latest_alert and (latest_alert.get("alert_status") or "").lower() in REVIEWED_ALERT_STATUSES:
             continue
 
@@ -200,6 +239,7 @@ def index():
         return redirect(url_for("dashboard"))
     return redirect(url_for("login"))
 
+
 @app.route("/dev-login")
 def dev_login():
     start_user_session({
@@ -214,6 +254,7 @@ def dev_login():
         session_token=session["browser_session_token"],
         next_url=url_for("dashboard")
     )
+
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
@@ -232,30 +273,38 @@ def register():
         elif password != confirm_password:
             message = "Passwords do not match."
         else:
-            employee_check = supabase.table("employees").select("employee_id").eq("employee_id", employee_id).execute()
+            employee_check = db_query(
+                "SELECT employee_id FROM employees WHERE employee_id = %s",
+                (employee_id,),
+            )
 
-            if not employee_check.data:
+            if not employee_check:
                 message = "Employee ID not found. Please contact your administrator."
             else:
-                existing = supabase.table("app_user").select("*").eq("email", email).execute()
+                existing = db_query(
+                    "SELECT email FROM app_user WHERE email = %s",
+                    (email,),
+                )
 
-                if existing.data:
+                if existing:
                     message = "An account with that email already exists."
                 else:
                     password_hash = generate_password_hash(password)
+                    inserted = db_query(
+                        """
+                        INSERT INTO app_user
+                            (employee_id, first_name, last_name, email,
+                             password_hash, role, employee_id_verified, is_active)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        RETURNING email
+                        """,
+                        (
+                            employee_id, first_name, last_name, email,
+                            password_hash, "analyst", False, True,
+                        ),
+                    )
 
-                    response = supabase.table("app_user").insert({
-                        "employee_id": employee_id,
-                        "first_name": first_name,
-                        "last_name": last_name,
-                        "email": email,
-                        "password_hash": password_hash,
-                        "role": "analyst",
-                        "employee_id_verified": False,
-                        "is_active": True
-                    }).execute()
-
-                    if response.data:
+                    if inserted:
                         message = "Account created. Please ask an admin to verify your employee ID before login."
                     else:
                         message = "Error creating account."
@@ -274,8 +323,10 @@ def login():
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
 
-        response = supabase.table("app_user").select("*").eq("email", email).execute()
-        users = response.data or []
+        users = db_query(
+            "SELECT * FROM app_user WHERE email = %s",
+            (email,),
+        ) or []
 
         if not users:
             message = "No user found with that email."
@@ -313,9 +364,7 @@ def view_customers():
     if "user_email" not in session:
         return redirect(url_for("login"))
 
-    response = supabase.table("customer").select("*").execute()
-    customers = response.data or []
-
+    customers = db_query("SELECT * FROM customer") or []
     return render_template("customers.html", customers=customers)
 
 
@@ -326,8 +375,7 @@ def add_customer():
 
     message = ""
 
-    # Fetch banks for the dropdown
-    banks = supabase.table("bank").select("bank_id, bank_name").execute().data or []
+    banks = db_query("SELECT bank_id, bank_name FROM bank") or []
 
     if request.method == "POST":
         bank_id = request.form.get("bank_id", "").strip()
@@ -341,22 +389,27 @@ def add_customer():
         if not all([bank_id, first_name, last_name, email]):
             message = "Please fill in all required fields."
         else:
-            response = supabase.table("customer").insert({
-                "bank_id": int(bank_id),
-                "first_name": first_name,
-                "last_name": last_name,
-                "email": email,
-                "phone": phone or None,
-                "date_of_birth": date_of_birth or None,
-                "address": address or None
-            }).execute()
-
-            if response.data:
-                return redirect(url_for("view_customers"))
-            else:
+            try:
+                inserted = db_query(
+                    """
+                    INSERT INTO customer
+                        (bank_id, first_name, last_name, email, phone, date_of_birth, address)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    RETURNING customer_id
+                    """,
+                    (
+                        int(bank_id), first_name, last_name, email,
+                        phone or None, date_of_birth or None, address or None,
+                    ),
+                )
+                if inserted:
+                    return redirect(url_for("view_customers"))
                 message = "Error adding customer."
+            except Exception as e:
+                message = f"Error adding customer: {e}"
 
     return render_template("add_customer.html", banks=banks, message=message)
+
 
 @app.route("/transactions")
 def view_transactions():
@@ -369,8 +422,9 @@ def view_transactions():
 
     table_name, rows, error = get_transactions_data()
 
-    # Fetch latest alert status per transaction
-    alert_rows = supabase.table("fraud_alert").select("transaction_id, alert_status, alert_id").execute().data or []
+    alert_rows = db_query(
+        "SELECT transaction_id, alert_status, alert_id FROM fraud_alert"
+    ) or []
     latest_alert = {}
     for a in alert_rows:
         tid = a["transaction_id"]
@@ -393,14 +447,8 @@ def view_transactions():
             alert_status = alert["alert_status"] if alert else ""
 
             haystack = " ".join([
-                transaction_id,
-                card_id,
-                merchant_id,
-                device_id,
-                amount,
-                timestamp,
-                location,
-                status
+                transaction_id, card_id, merchant_id, device_id,
+                amount, str(timestamp), str(location), str(status)
             ]).lower()
 
             if search and search not in haystack:
@@ -446,15 +494,23 @@ def add_transaction():
         return redirect(url_for("view_transactions", message="Card ID, Merchant ID, Amount, Date, and Location are required."))
 
     try:
-        supabase.table("transaction").insert({
-            "card_id": int(card_id),
-            "merchant_id": int(merchant_id),
-            "device_id": int(device_id) if device_id else None,
-            "transaction_amount": float(amount),
-            "transaction_date": date,
-            "transaction_location": location,
-            "transaction_status": status
-        }).execute()
+        db_execute(
+            """
+            INSERT INTO transaction
+                (card_id, merchant_id, device_id, transaction_amount,
+                 transaction_date, transaction_location, transaction_status)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                int(card_id),
+                int(merchant_id),
+                int(device_id) if device_id else None,
+                float(amount),
+                date,
+                location,
+                status,
+            ),
+        )
     except Exception as e:
         return redirect(url_for("view_transactions", message=f"Error inserting transaction: {e}"))
 
@@ -466,17 +522,29 @@ def flag_transaction(transaction_id):
     if not require_login():
         return redirect(url_for("login"))
 
-    # Only create an alert if one doesn't already exist
-    existing = supabase.table("fraud_alert").select("alert_id").eq("transaction_id", transaction_id).execute().data
+    existing = db_query(
+        "SELECT alert_id FROM fraud_alert WHERE transaction_id = %s",
+        (transaction_id,),
+    )
     if not existing:
-        supabase.table("fraud_alert").insert({
-            "transaction_id": transaction_id,
-            "alert_reason": "Manually flagged by analyst",
-            "alert_date": datetime.now(timezone.utc).isoformat(),
-            "alert_status": "open"
-        }).execute()
+        db_execute(
+            """
+            INSERT INTO fraud_alert
+                (transaction_id, alert_reason, alert_date, alert_status)
+            VALUES (%s, %s, %s, %s)
+            """,
+            (
+                transaction_id,
+                "Manually flagged by analyst",
+                datetime.now(timezone.utc).isoformat(),
+                "open",
+            ),
+        )
     else:
-        supabase.table("fraud_alert").update({"alert_status": "open"}).eq("transaction_id", transaction_id).execute()
+        db_execute(
+            "UPDATE fraud_alert SET alert_status = %s WHERE transaction_id = %s",
+            ("open", transaction_id),
+        )
 
     return redirect(url_for("view_transactions"))
 
@@ -496,16 +564,29 @@ def clear_suspicious_transaction(transaction_id):
     if "user_email" not in session:
         return redirect(url_for("login"))
 
-    existing = supabase.table("fraud_alert").select("alert_id").eq("transaction_id", transaction_id).execute().data
+    existing = db_query(
+        "SELECT alert_id FROM fraud_alert WHERE transaction_id = %s",
+        (transaction_id,),
+    )
     if existing:
-        supabase.table("fraud_alert").update({"alert_status": "cleared"}).eq("transaction_id", transaction_id).execute()
+        db_execute(
+            "UPDATE fraud_alert SET alert_status = %s WHERE transaction_id = %s",
+            ("cleared", transaction_id),
+        )
     else:
-        supabase.table("fraud_alert").insert({
-            "transaction_id": transaction_id,
-            "alert_reason": "Manually reviewed",
-            "alert_date": datetime.now(timezone.utc).isoformat(),
-            "alert_status": "cleared"
-        }).execute()
+        db_execute(
+            """
+            INSERT INTO fraud_alert
+                (transaction_id, alert_reason, alert_date, alert_status)
+            VALUES (%s, %s, %s, %s)
+            """,
+            (
+                transaction_id,
+                "Manually reviewed",
+                datetime.now(timezone.utc).isoformat(),
+                "cleared",
+            ),
+        )
 
     return redirect(url_for("suspicious_transactions"))
 
@@ -515,41 +596,60 @@ def flag_as_fraud(transaction_id):
     if "user_email" not in session:
         return redirect(url_for("login"))
 
-    # Resolve customer_id via transaction -> credit_card -> account -> customer
-    customer_id = None
-    txn_data = supabase.table("transaction").select("card_id").eq("transaction_id", transaction_id).execute().data
-    if txn_data:
-        card_id = txn_data[0].get("card_id")
-        if card_id:
-            card_data = supabase.table("credit_card").select("account_id").eq("card_id", card_id).execute().data
-            if card_data:
-                account_id = card_data[0].get("account_id")
-                if account_id:
-                    account_data = supabase.table("account").select("customer_id").eq("account_id", account_id).execute().data
-                    if account_data:
-                        customer_id = account_data[0].get("customer_id")
+    customer_rows = db_query(
+        """
+        SELECT a.customer_id
+        FROM transaction t
+        JOIN credit_card cc ON cc.card_id = t.card_id
+        JOIN account     a  ON a.account_id = cc.account_id
+        WHERE t.transaction_id = %s
+        """,
+        (transaction_id,),
+    )
+    customer_id = customer_rows[0]["customer_id"] if customer_rows else None
 
-    # Only create a report if one doesn't already exist for this transaction
-    existing_report = supabase.table("fraud_report").select("report_id").eq("transaction_id", transaction_id).execute().data
+    existing_report = db_query(
+        "SELECT report_id FROM fraud_report WHERE transaction_id = %s",
+        (transaction_id,),
+    )
     if not existing_report:
-        supabase.table("fraud_report").insert({
-            "customer_id": customer_id,
-            "transaction_id": transaction_id,
-            "report_date": datetime.now(timezone.utc).isoformat(),
-            "resolution_status": "open"
-        }).execute()
+        db_execute(
+            """
+            INSERT INTO fraud_report
+                (customer_id, transaction_id, report_date, resolution_status)
+            VALUES (%s, %s, %s, %s)
+            """,
+            (
+                customer_id,
+                transaction_id,
+                datetime.now(timezone.utc).isoformat(),
+                "open",
+            ),
+        )
 
-    # Mark alert status as flagged (create alert if none exists)
-    existing_alert = supabase.table("fraud_alert").select("alert_id").eq("transaction_id", transaction_id).execute().data
+    existing_alert = db_query(
+        "SELECT alert_id FROM fraud_alert WHERE transaction_id = %s",
+        (transaction_id,),
+    )
     if existing_alert:
-        supabase.table("fraud_alert").update({"alert_status": "flagged"}).eq("transaction_id", transaction_id).execute()
+        db_execute(
+            "UPDATE fraud_alert SET alert_status = %s WHERE transaction_id = %s",
+            ("flagged", transaction_id),
+        )
     else:
-        supabase.table("fraud_alert").insert({
-            "transaction_id": transaction_id,
-            "alert_reason": "Manually flagged as fraud",
-            "alert_date": datetime.now(timezone.utc).isoformat(),
-            "alert_status": "flagged"
-        }).execute()
+        db_execute(
+            """
+            INSERT INTO fraud_alert
+                (transaction_id, alert_reason, alert_date, alert_status)
+            VALUES (%s, %s, %s, %s)
+            """,
+            (
+                transaction_id,
+                "Manually flagged as fraud",
+                datetime.now(timezone.utc).isoformat(),
+                "flagged",
+            ),
+        )
 
     return redirect(url_for("suspicious_transactions"))
 
@@ -559,19 +659,27 @@ def fraud_reports():
     if "user_email" not in session:
         return redirect(url_for("login"))
 
-    reports = supabase.table("fraud_report").select("*").order("report_date", desc=True).execute().data or []
+    reports = db_query(
+        "SELECT * FROM fraud_report ORDER BY report_date DESC"
+    ) or []
 
     transaction_ids = [r["transaction_id"] for r in reports if r.get("transaction_id")]
     customer_ids = [r["customer_id"] for r in reports if r.get("customer_id")]
 
     transactions = {}
     if transaction_ids:
-        txn_rows = supabase.table("transaction").select("*").in_("transaction_id", transaction_ids).execute().data or []
+        txn_rows = db_query(
+            "SELECT * FROM transaction WHERE transaction_id = ANY(%s)",
+            (transaction_ids,),
+        ) or []
         transactions = {t["transaction_id"]: t for t in txn_rows}
 
     customers = {}
     if customer_ids:
-        cust_rows = supabase.table("customer").select("*").in_("customer_id", customer_ids).execute().data or []
+        cust_rows = db_query(
+            "SELECT * FROM customer WHERE customer_id = ANY(%s)",
+            (customer_ids,),
+        ) or []
         customers = {c["customer_id"]: c for c in cust_rows}
 
     for report in reports:
@@ -586,7 +694,10 @@ def resolve_fraud_report(report_id):
     if "user_email" not in session:
         return redirect(url_for("login"))
 
-    supabase.table("fraud_report").update({"resolution_status": "resolved"}).eq("report_id", report_id).execute()
+    db_execute(
+        "UPDATE fraud_report SET resolution_status = %s WHERE report_id = %s",
+        ("resolved", report_id),
+    )
     return redirect(url_for("fraud_reports"))
 
 
@@ -595,7 +706,10 @@ def delete_fraud_report(report_id):
     if "user_email" not in session:
         return redirect(url_for("login"))
 
-    supabase.table("fraud_report").delete().eq("report_id", report_id).execute()
+    db_execute(
+        "DELETE FROM fraud_report WHERE report_id = %s",
+        (report_id,),
+    )
     return redirect(url_for("fraud_reports"))
 
 
@@ -606,8 +720,8 @@ def admin():
     if not require_admin():
         return "Access denied.", 403
 
-    users = supabase.table("app_user").select("*").execute().data or []
-    employees = supabase.table("employees").select("*").execute().data or []
+    users = db_query("SELECT * FROM app_user") or []
+    employees = db_query("SELECT * FROM employees") or []
     message = request.args.get("message", "")
     return render_template("admin.html", users=users, employees=employees, message=message)
 
@@ -618,7 +732,10 @@ def admin_verify_user(user_email):
         return "Access denied.", 403
 
     verified = request.form.get("verified") == "1"
-    supabase.table("app_user").update({"employee_id_verified": verified}).eq("email", user_email).execute()
+    db_execute(
+        "UPDATE app_user SET employee_id_verified = %s WHERE email = %s",
+        (verified, user_email),
+    )
     return redirect(url_for("admin"))
 
 
@@ -627,10 +744,16 @@ def admin_toggle_active(user_email):
     if not require_admin():
         return "Access denied.", 403
 
-    user = supabase.table("app_user").select("is_active").eq("email", user_email).execute().data
-    if user:
-        new_status = not user[0].get("is_active", True)
-        supabase.table("app_user").update({"is_active": new_status}).eq("email", user_email).execute()
+    rows = db_query(
+        "SELECT is_active FROM app_user WHERE email = %s",
+        (user_email,),
+    )
+    if rows:
+        new_status = not rows[0].get("is_active", True)
+        db_execute(
+            "UPDATE app_user SET is_active = %s WHERE email = %s",
+            (new_status, user_email),
+        )
     return redirect(url_for("admin"))
 
 
@@ -642,7 +765,7 @@ def admin_delete_user(user_email):
     if user_email == session.get("user_email"):
         return redirect(url_for("admin", message="You cannot delete your own account."))
 
-    supabase.table("app_user").delete().eq("email", user_email).execute()
+    db_execute("DELETE FROM app_user WHERE email = %s", (user_email,))
     return redirect(url_for("admin", message=f"Deleted user {user_email}."))
 
 
@@ -660,24 +783,32 @@ def admin_create_user():
     if not all([employee_id, first_name, last_name, email, password]):
         return redirect(url_for("admin", message="All fields are required to create a user."))
 
-    employee_check = supabase.table("employees").select("employee_id").eq("employee_id", employee_id).execute()
-    if not employee_check.data:
+    employee_check = db_query(
+        "SELECT employee_id FROM employees WHERE employee_id = %s",
+        (employee_id,),
+    )
+    if not employee_check:
         return redirect(url_for("admin", message=f"Employee ID {employee_id} not found."))
 
-    existing = supabase.table("app_user").select("email").eq("email", email).execute()
-    if existing.data:
+    existing = db_query(
+        "SELECT email FROM app_user WHERE email = %s",
+        (email,),
+    )
+    if existing:
         return redirect(url_for("admin", message=f"User {email} already exists."))
 
-    supabase.table("app_user").insert({
-        "employee_id": employee_id,
-        "first_name": first_name,
-        "last_name": last_name,
-        "email": email,
-        "password_hash": generate_password_hash(password),
-        "role": "analyst",
-        "employee_id_verified": True,
-        "is_active": True,
-    }).execute()
+    db_execute(
+        """
+        INSERT INTO app_user
+            (employee_id, first_name, last_name, email,
+             password_hash, role, employee_id_verified, is_active)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """,
+        (
+            employee_id, first_name, last_name, email,
+            generate_password_hash(password), "analyst", True, True,
+        ),
+    )
     return redirect(url_for("admin", message=f"Created user {email}."))
 
 
@@ -694,16 +825,20 @@ def admin_create_employee():
     if not all([employee_id, first_name, last_name, department]):
         return redirect(url_for("admin", message="All fields are required to create an employee."))
 
-    existing = supabase.table("employees").select("employee_id").eq("employee_id", employee_id).execute()
-    if existing.data:
+    existing = db_query(
+        "SELECT employee_id FROM employees WHERE employee_id = %s",
+        (employee_id,),
+    )
+    if existing:
         return redirect(url_for("admin", message=f"Employee {employee_id} already exists."))
 
-    supabase.table("employees").insert({
-        "employee_id": employee_id,
-        "firstname": first_name,
-        "lastname": last_name,
-        "department": department,
-    }).execute()
+    db_execute(
+        """
+        INSERT INTO employees (employee_id, firstname, lastname, department)
+        VALUES (%s, %s, %s, %s)
+        """,
+        (employee_id, first_name, last_name, department),
+    )
     return redirect(url_for("admin", message=f"Created employee {employee_id}."))
 
 
@@ -715,8 +850,8 @@ def admin_delete_employee(employee_id):
     if employee_id == session.get("employee_id"):
         return redirect(url_for("admin", message="You cannot delete your own employee record."))
 
-    supabase.table("app_user").delete().eq("employee_id", employee_id).execute()
-    supabase.table("employees").delete().eq("employee_id", employee_id).execute()
+    db_execute("DELETE FROM app_user WHERE employee_id = %s", (employee_id,))
+    db_execute("DELETE FROM employees WHERE employee_id = %s", (employee_id,))
     return redirect(url_for("admin", message=f"Deleted employee {employee_id}."))
 
 
