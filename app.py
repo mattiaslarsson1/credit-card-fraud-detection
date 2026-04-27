@@ -320,17 +320,32 @@ def view_transactions():
                 "location": location,
                 "status": status
             })
-
+    customers_response = supabase.table("customer").select("customer_id, first_name, last_name").execute()
+    customers = customers_response.data or []
     return render_template(
         "transactions.html",
         transactions=transactions,
         search=search,
         flagged_only=flagged_only,
         error=error,
-        table_name=table_name
+        table_name=table_name,
+        customers=customers
     )
 
+@app.route("/transactions/<int:transaction_id>/report", methods=["POST"])
+def report_transaction(transaction_id):
+    if not require_login():
+        return redirect(url_for("login"))
 
+    customer_id = request.form.get("customer_id", "").strip()
+
+    if customer_id:
+        supabase.rpc("create_fraud_report", {
+            "p_customer_id": int(customer_id),
+            "p_transaction_id": transaction_id
+        }).execute()
+
+    return redirect(url_for("view_transactions"))
 @app.route("/suspicious-transactions")
 def suspicious_transactions():
     if "user_email" not in session:
