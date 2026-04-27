@@ -1,4 +1,6 @@
 import os
+import json
+import uuid
 from datetime import datetime, timezone
 from flask import Flask, request, redirect, session, url_for, render_template, render_template_string
 from dotenv import load_dotenv
@@ -39,6 +41,66 @@ def get_role_for_employee(employee_id):
 
 def require_admin():
     return "user_email" in session and session.get("user_role") == "admin"
+
+
+def start_user_session(user):
+    session.clear()
+    session.permanent = False
+    session["user_email"] = user["email"]
+    session["user_name"] = f"{user['first_name']} {user['last_name']}"
+    session["user_role"] = user["role"]
+    session["employee_id"] = user["employee_id"]
+    session["browser_session_token"] = uuid.uuid4().hex
+
+
+def authenticated_response_guard():
+    if "user_email" not in session:
+        return ""
+
+    token = json.dumps(session.get("browser_session_token", ""))
+    logout_url = json.dumps(url_for("logout"))
+
+    return f"""
+        <script>
+            (function () {{
+                var key = "bankFraudSessionToken";
+                var expectedToken = {token};
+
+                function endRestoredSession() {{
+                    if (window.sessionStorage.getItem(key) !== expectedToken) {{
+                        window.location.replace({logout_url});
+                    }}
+                }}
+
+                endRestoredSession();
+                window.addEventListener("pageshow", function (event) {{
+                    if (event.persisted) {{
+                        endRestoredSession();
+                    }}
+                }});
+            }})();
+        </script>
+    """
+
+
+@app.after_request
+def prevent_private_page_cache(response):
+    if "user_email" in session:
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+
+        if response.content_type and response.content_type.startswith("text/html"):
+            body = response.get_data(as_text=True)
+            guard = authenticated_response_guard()
+            if "</body>" in body:
+                body = body.replace("</body>", guard + "\n</body>")
+            else:
+                body += guard
+            response.set_data(body)
+            response.headers["Content-Length"] = str(len(response.get_data()))
+
+    return response
 
 
 def safe_get(row, *keys, default=""):
@@ -140,11 +202,18 @@ def index():
 
 @app.route("/dev-login")
 def dev_login():
-    session["user_email"] = "dev@test.com"
-    session["user_name"] = "Dev User"
-    session["user_role"] = "admin"
-    session["employee_id"] = "EMP001"
-    return redirect(url_for("dashboard"))
+    start_user_session({
+        "email": "dev@test.com",
+        "first_name": "Dev",
+        "last_name": "User",
+        "role": "admin",
+        "employee_id": "EMP001"
+    })
+    return render_template(
+        "login_success.html",
+        session_token=session["browser_session_token"],
+        next_url=url_for("dashboard")
+    )
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
@@ -220,11 +289,13 @@ def login():
             elif not check_password_hash(user["password_hash"], password):
                 message = "Incorrect password."
             else:
-                session["user_email"] = user["email"]
-                session["user_name"] = f"{user['first_name']} {user['last_name']}"
-                session["user_role"] = get_role_for_employee(user["employee_id"])
-                session["employee_id"] = user["employee_id"]
-                return redirect(url_for("dashboard"))
+                user["role"] = get_role_for_employee(user["employee_id"])
+                start_user_session(user)
+                return render_template(
+                    "login_success.html",
+                    session_token=session["browser_session_token"],
+                    next_url=url_for("dashboard")
+                )
 
     return render_template("login.html", message=message)
 
