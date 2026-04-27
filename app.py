@@ -1,6 +1,4 @@
 import os
-import json
-import uuid
 from flask import Flask, request, redirect, session, url_for, render_template, render_template_string
 from dotenv import load_dotenv
 from supabase import create_client, Client
@@ -20,7 +18,7 @@ def require_login():
     return "user_email" in session
 
 
-
+SECURITY_DEPARTMENT = "security"
 
 def get_role_for_employee(employee_id):
     if not employee_id:
@@ -128,18 +126,11 @@ def index():
 
 @app.route("/dev-login")
 def dev_login():
-    start_user_session({
-        "email": "dev@test.com",
-        "first_name": "Dev",
-        "last_name": "User",
-        "role": "admin",
-        "employee_id": "EMP001"
-    })
-    return render_template(
-        "login_success.html",
-        session_token=session["browser_session_token"],
-        next_url=url_for("dashboard")
-    )
+    session["user_email"] = "dev@test.com"
+    session["user_name"] = "Dev User"
+    session["user_role"] = "admin"
+    session["employee_id"] = "EMP001"
+    return redirect(url_for("dashboard"))
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
@@ -348,6 +339,29 @@ def suspicious_transactions():
     transactions = get_high_risk_transactions()
 
     return render_template("suspicious_transactions.html", transactions=transactions, threshold=HIGH_RISK_AMOUNT_THRESHOLD)
+
+
+@app.route("/suspicious-transactions/<int:transaction_id>/clear", methods=["POST"])
+def clear_suspicious_transaction(transaction_id):
+    if "user_email" not in session:
+        return redirect(url_for("login"))
+
+    supabase.table("fraud_alert").update({"alert_status": "resolved"}).eq("transaction_id", transaction_id).execute()
+    supabase.table("transaction").update({"transaction_status": "cleared"}).eq("transaction_id", transaction_id).execute()
+
+    return redirect(url_for("suspicious_transactions"))
+
+
+@app.route("/suspicious-transactions/<int:transaction_id>/delete", methods=["POST"])
+def delete_suspicious_transaction(transaction_id):
+    if "user_email" not in session:
+        return redirect(url_for("login"))
+
+    supabase.table("fraud_alert").delete().eq("transaction_id", transaction_id).execute()
+    supabase.table("fraud_report").delete().eq("transaction_id", transaction_id).execute()
+    supabase.table("transaction").delete().eq("transaction_id", transaction_id).execute()
+
+    return redirect(url_for("suspicious_transactions"))
 
 
 @app.route("/admin")
