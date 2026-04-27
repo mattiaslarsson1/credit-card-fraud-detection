@@ -1,55 +1,229 @@
 {% extends "base.html" %}
-
+{% block title %}Transactions{% endblock %}
 {% block content %}
-<h1>Transactions</h1>
+<style>
+    body {
+        background: #f4f7fb;
+        color: #1f2937;
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 32px;
+    }
+    .page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 24px;
+    }
+    .back-link {
+        color: #2563eb;
+        text-decoration: none;
+    }
+    .card {
+        background: #fff;
+        border-radius: 10px;
+        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+        margin-bottom: 24px;
+        padding: 24px;
+    }
+    .card h2 {
+        margin: 0 0 16px;
+        font-size: 16px;
+        color: #111827;
+    }
+    .form-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 12px;
+    }
+    .form-grid label {
+        display: flex;
+        flex-direction: column;
+        font-size: 13px;
+        color: #374151;
+        gap: 4px;
+    }
+    .form-grid input, .form-grid select {
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        font-size: 14px;
+        padding: 8px 10px;
+    }
+    .btn {
+        background: #2563eb;
+        border: none;
+        border-radius: 6px;
+        color: #fff;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 600;
+        padding: 8px 16px;
+    }
+    .btn:hover { background: #1d4ed8; }
+    .btn-sm {
+        background: #2563eb;
+        border: none;
+        border-radius: 6px;
+        color: #fff;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 600;
+        padding: 5px 12px;
+    }
+    .btn-sm:hover { background: #1d4ed8; }
+    .search-row {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 16px;
+    }
+    .search-row input {
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        flex: 1;
+        font-size: 14px;
+        padding: 8px 12px;
+    }
+    table {
+        background: #fff;
+        border-collapse: collapse;
+        border-radius: 10px;
+        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+        overflow: hidden;
+        width: 100%;
+    }
+    th, td {
+        border-bottom: 1px solid #e5e7eb;
+        padding: 14px 16px;
+        text-align: left;
+    }
+    th {
+        background: #111827;
+        color: #fff;
+        font-size: 13px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+    tr:last-child td { border-bottom: none; }
+    .badge {
+        border-radius: 999px;
+        display: inline-block;
+        font-size: 12px;
+        font-weight: bold;
+        padding: 4px 10px;
+    }
+    .badge-pending   { background: #fef3c7; color: #92400e; }
+    .badge-completed { background: #d1fae5; color: #065f46; }
+    .badge-declined  { background: #fee2e2; color: #991b1b; }
+    .badge-open      { background: #fee2e2; color: #991b1b; }
+    .badge-flagged   { background: #fde68a; color: #78350f; }
+    .badge-cleared   { background: #d1fae5; color: #065f46; }
+    .badge-investigating { background: #ede9fe; color: #4c1d95; }
+    .empty-state {
+        background: #fff;
+        border-radius: 10px;
+        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+        padding: 32px;
+        text-align: center;
+    }
+    .message-ok  { color: #065f46; background: #d1fae5; border-radius: 6px; padding: 10px 16px; margin-bottom: 16px; }
+    .message-err { color: #991b1b; background: #fee2e2; border-radius: 6px; padding: 10px 16px; margin-bottom: 16px; }
+</style>
 
-<p>
-    <a href="{{ url_for('dashboard') }}">Back to Dashboard</a>
-</p>
+<div class="page-header">
+    <div>
+        <h1>Transactions</h1>
+        <p>All credit card transactions. Use the form below to add a new one.</p>
+    </div>
+    <a class="back-link" href="{{ url_for('dashboard') }}">← Back to Dashboard</a>
+</div>
 
-<form method="get">
-    <input type="text" name="search" placeholder="Search transaction, customer, merchant..." value="{{ search }}">
-    <button type="submit">Search</button>
-</form>
+{% if message %}
+    <div class="message-ok"><strong>{{ message }}</strong></div>
+{% endif %}
 
+<div class="card">
+    <h2>Add Transaction</h2>
+    <form method="POST" action="{{ url_for('add_transaction') }}">
+        <div class="form-grid">
+            <label>Card ID<input type="number" name="card_id" required></label>
+            <label>Merchant ID<input type="number" name="merchant_id" required></label>
+            <label>Device ID<input type="number" name="device_id"></label>
+            <label>Amount<input type="number" step="0.01" name="amount" required></label>
+            <label>Date<input type="datetime-local" name="date" required></label>
+            <label>Location<input type="text" name="location" required></label>
+            <label>Status
+                <select name="status">
+                    <option value="pending">Pending</option>
+                    <option value="completed">Completed</option>
+                    <option value="declined">Declined</option>
+                </select>
+            </label>
+        </div>
+        <br>
+        <button class="btn" type="submit">Add Transaction</button>
+    </form>
+</div>
 
 {% if error %}
-    <p style="color: red;">Could not load transactions.</p>
-    <p>Tried tables: transactions, transaction, credit_card_transaction</p>
-    <p>{{ error }}</p>
+    <div class="message-err">Could not load transactions: {{ error }}</div>
 {% else %}
-    <p>Source table: {{ table_name }}</p>
-    <p>Total shown: {{ transactions|length }}</p>
 
-    <table border="1" cellpadding="8">
-        <tr>
-            <th>Transaction ID</th>
-            <th>Card ID</th>
-            <th>Merchant ID</th>
-            <th>Device ID</th>
-            <th>Amount</th>
-            <th>Date</th>
-            <th>Location</th>
-            <th>Status</th>
-        </tr>
+<div class="search-row">
+    <form method="get" style="display:contents">
+        <input type="text" name="search" placeholder="Search transaction, merchant, location..." value="{{ search }}">
+        <button class="btn" type="submit">Search</button>
+    </form>
+</div>
 
-        {% for t in transactions %}
-        <tr>
-            <td>{{ t.transaction_id }}</td>
-            <td>{{ t.card_id }}</td>
-            <td>{{ t.merchant_id }}</td>
-            <td>{{ t.device_id }}</td>
-            <td>${{ t.amount }}</td>
-            <td>{{ t.timestamp }}</td>
-            <td>{{ t.location }}</td>
-            <td>{{ t.status }}</td>
-                
-        </tr>
-        {% endfor %}
-    </table>
+<p style="color:#6b7280; font-size:13px; margin-bottom:12px;">Showing {{ transactions|length }} transaction{{ 's' if transactions|length != 1 else '' }}</p>
 
-    {% if transactions|length == 0 %}
-        <p>No transactions found.</p>
-    {% endif %}
+{% if transactions %}
+<table>
+    <tr>
+        <th>Transaction ID</th>
+        <th>Card ID</th>
+        <th>Merchant ID</th>
+        <th>Device ID</th>
+        <th>Amount</th>
+        <th>Date</th>
+        <th>Location</th>
+        <th>Status</th>
+        <th>Alert Status</th>
+        <th>Actions</th>
+    </tr>
+    {% for t in transactions %}
+    <tr>
+        <td>#{{ t.transaction_id }}</td>
+        <td>{{ t.card_id }}</td>
+        <td>{{ t.merchant_id }}</td>
+        <td>{{ t.device_id if t.device_id else '—' }}</td>
+        <td>${{ "%.2f"|format(t.amount|float) }}</td>
+        <td>{{ t.timestamp }}</td>
+        <td>{{ t.location }}</td>
+        <td>
+            <span class="badge badge-{{ t.status }}">{{ t.status|capitalize }}</span>
+        </td>
+        <td>
+            {% if t.alert_status %}
+                <span class="badge badge-{{ t.alert_status }}">{{ t.alert_status|capitalize }}</span>
+            {% else %}
+                <span style="color:#9ca3af">—</span>
+            {% endif %}
+        </td>
+        <td>
+            <form method="POST" action="{{ url_for('flag_transaction', transaction_id=t.transaction_id) }}" style="display:inline">
+                <button class="btn-sm" type="submit">Alert</button>
+            </form>
+        </td>
+    </tr>
+    {% endfor %}
+</table>
+{% else %}
+<div class="empty-state">
+    <h2>No transactions found</h2>
+    <p>Try a different search term or add a new transaction above.</p>
+</div>
 {% endif %}
+{% endif %}
+
 {% endblock %}

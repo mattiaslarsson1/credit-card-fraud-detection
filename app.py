@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, timezone
 from flask import Flask, request, redirect, session, url_for, render_template, render_template_string
 from dotenv import load_dotenv
 from supabase import create_client, Client
@@ -72,17 +73,25 @@ def get_high_risk_transactions():
     alert_response = supabase.table("fraud_alert").select("*").execute()
     alerts = alert_response.data or []
     active_alerts_by_transaction_id = {}
+    latest_alert_by_transaction_id = {}
 
     for alert in alerts:
         alert_status = (alert.get("alert_status") or "").lower()
+        tid = alert.get("transaction_id")
+        # Track the most recent alert for display regardless of status
+        existing = latest_alert_by_transaction_id.get(tid)
+        if not existing or (alert.get("alert_id", 0) > existing.get("alert_id", 0)):
+            latest_alert_by_transaction_id[tid] = alert
         if alert_status in HIGH_RISK_ALERT_STATUSES:
-            active_alerts_by_transaction_id[alert.get("transaction_id")] = alert
+            active_alerts_by_transaction_id[tid] = alert
 
     merchant_response = supabase.table("merchant").select("*").execute()
     merchants = {
         merchant["merchant_id"]: merchant
         for merchant in merchant_response.data or []
     }
+
+    REVIEWED_ALERT_STATUSES = {"cleared"}
 
     high_risk_transactions = []
 
@@ -91,6 +100,11 @@ def get_high_risk_transactions():
         transaction_status = (transaction.get("transaction_status") or "").lower()
         amount = float(transaction.get("transaction_amount") or 0)
         active_alert = active_alerts_by_transaction_id.get(transaction_id)
+        latest_alert = latest_alert_by_transaction_id.get(transaction_id)
+
+        # Skip if already reviewed by an analyst
+        if latest_alert and (latest_alert.get("alert_status") or "").lower() in REVIEWED_ALERT_STATUSES:
+            continue
 
         high_risk_reasons = []
 
@@ -108,7 +122,7 @@ def get_high_risk_transactions():
 
         transaction["merchant"] = merchants.get(transaction.get("merchant_id"), {})
         transaction["risk_reason"] = ", ".join(dict.fromkeys(high_risk_reasons))
-        transaction["alert_status"] = active_alert.get("alert_status") if active_alert else "Needs review"
+        transaction["alert_status"] = latest_alert.get("alert_status") if latest_alert else "No alert"
         high_risk_transactions.append(transaction)
 
     return sorted(
@@ -280,9 +294,18 @@ def view_transactions():
 
     search = request.args.get("search", "").strip().lower()
     flagged_only = request.args.get("flagged_only", "") == "1"
+    message = request.args.get("message", "")
 
     table_name, rows, error = get_transactions_data()
-    print(rows[0])
+
+    # Fetch latest alert status per transaction
+    alert_rows = supabase.table("fraud_alert").select("transaction_id, alert_status, alert_id").execute().data or []
+    latest_alert = {}
+    for a in alert_rows:
+        tid = a["transaction_id"]
+        if tid not in latest_alert or a["alert_id"] > latest_alert[tid]["alert_id"]:
+            latest_alert[tid] = a
+
     transactions = []
 
     if not error:
@@ -295,6 +318,8 @@ def view_transactions():
             timestamp = row.get("transaction_date", "")
             location = row.get("transaction_location", "")
             status = row.get("transaction_status", "")
+            alert = latest_alert.get(row.get("transaction_id"))
+            alert_status = alert["alert_status"] if alert else ""
 
             haystack = " ".join([
                 transaction_id,
@@ -318,7 +343,8 @@ def view_transactions():
                 "amount": amount,
                 "timestamp": timestamp,
                 "location": location,
-                "status": status
+                "status": status,
+                "alert_status": alert_status
             })
 
     return render_template(
@@ -327,8 +353,61 @@ def view_transactions():
         search=search,
         flagged_only=flagged_only,
         error=error,
-        table_name=table_name
+        table_name=table_name,
+        message=message
     )
+
+
+@app.route("/transactions/add", methods=["POST"])
+def add_transaction():
+    if not require_login():
+        return redirect(url_for("login"))
+
+    card_id = request.form.get("card_id", "").strip()
+    merchant_id = request.form.get("merchant_id", "").strip()
+    device_id = request.form.get("device_id", "").strip()
+    amount = request.form.get("amount", "").strip()
+    date = request.form.get("date", "").strip()
+    location = request.form.get("location", "").strip()
+    status = request.form.get("status", "pending").strip()
+
+    if not all([card_id, merchant_id, amount, date, location]):
+        return redirect(url_for("view_transactions", message="Card ID, Merchant ID, Amount, Date, and Location are required."))
+
+    try:
+        supabase.table("transaction").insert({
+            "card_id": int(card_id),
+            "merchant_id": int(merchant_id),
+            "device_id": int(device_id) if device_id else None,
+            "transaction_amount": float(amount),
+            "transaction_date": date,
+            "transaction_location": location,
+            "transaction_status": status
+        }).execute()
+    except Exception as e:
+        return redirect(url_for("view_transactions", message=f"Error inserting transaction: {e}"))
+
+    return redirect(url_for("view_transactions", message="Transaction added successfully."))
+
+
+@app.route("/transactions/<int:transaction_id>/flag", methods=["POST"])
+def flag_transaction(transaction_id):
+    if not require_login():
+        return redirect(url_for("login"))
+
+    # Only create an alert if one doesn't already exist
+    existing = supabase.table("fraud_alert").select("alert_id").eq("transaction_id", transaction_id).execute().data
+    if not existing:
+        supabase.table("fraud_alert").insert({
+            "transaction_id": transaction_id,
+            "alert_reason": "Manually flagged by analyst",
+            "alert_date": datetime.now(timezone.utc).isoformat(),
+            "alert_status": "open"
+        }).execute()
+    else:
+        supabase.table("fraud_alert").update({"alert_status": "open"}).eq("transaction_id", transaction_id).execute()
+
+    return redirect(url_for("view_transactions"))
 
 
 @app.route("/suspicious-transactions")
@@ -346,28 +425,107 @@ def clear_suspicious_transaction(transaction_id):
     if "user_email" not in session:
         return redirect(url_for("login"))
 
-    # Resolve all open fraud alerts for this transaction
-    supabase.table("fraud_alert").update({"alert_status": "resolved"}).eq("transaction_id", transaction_id).execute()
-
-    # Mark the transaction itself as cleared
-    supabase.table("transaction").update({"transaction_status": "cleared"}).eq("transaction_id", transaction_id).execute()
+    existing = supabase.table("fraud_alert").select("alert_id").eq("transaction_id", transaction_id).execute().data
+    if existing:
+        supabase.table("fraud_alert").update({"alert_status": "cleared"}).eq("transaction_id", transaction_id).execute()
+    else:
+        supabase.table("fraud_alert").insert({
+            "transaction_id": transaction_id,
+            "alert_reason": "Manually reviewed",
+            "alert_date": datetime.now(timezone.utc).isoformat(),
+            "alert_status": "cleared"
+        }).execute()
 
     return redirect(url_for("suspicious_transactions"))
 
 
-@app.route("/suspicious-transactions/<int:transaction_id>/delete", methods=["POST"])
-def delete_suspicious_transaction(transaction_id):
+@app.route("/suspicious-transactions/<int:transaction_id>/flag", methods=["POST"])
+def flag_as_fraud(transaction_id):
     if "user_email" not in session:
         return redirect(url_for("login"))
 
-    # Delete associated records first (foreign key constraints)
-    supabase.table("fraud_alert").delete().eq("transaction_id", transaction_id).execute()
-    supabase.table("fraud_report").delete().eq("transaction_id", transaction_id).execute()
+    # Resolve customer_id via transaction -> credit_card -> account -> customer
+    customer_id = None
+    txn_data = supabase.table("transaction").select("card_id").eq("transaction_id", transaction_id).execute().data
+    if txn_data:
+        card_id = txn_data[0].get("card_id")
+        if card_id:
+            card_data = supabase.table("credit_card").select("account_id").eq("card_id", card_id).execute().data
+            if card_data:
+                account_id = card_data[0].get("account_id")
+                if account_id:
+                    account_data = supabase.table("account").select("customer_id").eq("account_id", account_id).execute().data
+                    if account_data:
+                        customer_id = account_data[0].get("customer_id")
 
-    # Delete the transaction
-    supabase.table("transaction").delete().eq("transaction_id", transaction_id).execute()
+    # Only create a report if one doesn't already exist for this transaction
+    existing_report = supabase.table("fraud_report").select("report_id").eq("transaction_id", transaction_id).execute().data
+    if not existing_report:
+        supabase.table("fraud_report").insert({
+            "customer_id": customer_id,
+            "transaction_id": transaction_id,
+            "report_date": datetime.now(timezone.utc).isoformat(),
+            "resolution_status": "open"
+        }).execute()
+
+    # Mark alert status as flagged (create alert if none exists)
+    existing_alert = supabase.table("fraud_alert").select("alert_id").eq("transaction_id", transaction_id).execute().data
+    if existing_alert:
+        supabase.table("fraud_alert").update({"alert_status": "flagged"}).eq("transaction_id", transaction_id).execute()
+    else:
+        supabase.table("fraud_alert").insert({
+            "transaction_id": transaction_id,
+            "alert_reason": "Manually flagged as fraud",
+            "alert_date": datetime.now(timezone.utc).isoformat(),
+            "alert_status": "flagged"
+        }).execute()
 
     return redirect(url_for("suspicious_transactions"))
+
+
+@app.route("/fraud-reports")
+def fraud_reports():
+    if "user_email" not in session:
+        return redirect(url_for("login"))
+
+    reports = supabase.table("fraud_report").select("*").order("report_date", desc=True).execute().data or []
+
+    transaction_ids = [r["transaction_id"] for r in reports if r.get("transaction_id")]
+    customer_ids = [r["customer_id"] for r in reports if r.get("customer_id")]
+
+    transactions = {}
+    if transaction_ids:
+        txn_rows = supabase.table("transaction").select("*").in_("transaction_id", transaction_ids).execute().data or []
+        transactions = {t["transaction_id"]: t for t in txn_rows}
+
+    customers = {}
+    if customer_ids:
+        cust_rows = supabase.table("customer").select("*").in_("customer_id", customer_ids).execute().data or []
+        customers = {c["customer_id"]: c for c in cust_rows}
+
+    for report in reports:
+        report["transaction"] = transactions.get(report.get("transaction_id"), {})
+        report["customer"] = customers.get(report.get("customer_id"), {})
+
+    return render_template("fraud_reports.html", reports=reports)
+
+
+@app.route("/fraud-reports/<int:report_id>/resolve", methods=["POST"])
+def resolve_fraud_report(report_id):
+    if "user_email" not in session:
+        return redirect(url_for("login"))
+
+    supabase.table("fraud_report").update({"resolution_status": "resolved"}).eq("report_id", report_id).execute()
+    return redirect(url_for("fraud_reports"))
+
+
+@app.route("/fraud-reports/<int:report_id>/delete", methods=["POST"])
+def delete_fraud_report(report_id):
+    if "user_email" not in session:
+        return redirect(url_for("login"))
+
+    supabase.table("fraud_report").delete().eq("report_id", report_id).execute()
+    return redirect(url_for("fraud_reports"))
 
 
 @app.route("/admin")

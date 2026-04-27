@@ -1,17 +1,123 @@
 {% extends "base.html" %}
 {% block title %}Dashboard{% endblock %}
 {% block content %}
+<style>
+    body {
+        background: #f4f7fb;
+        color: #1f2937;
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 32px;
+    }
+    .page-header {
+        margin-bottom: 32px;
+    }
+    .page-header h1 {
+        margin: 0 0 4px;
+    }
+    .page-header p {
+        color: #6b7280;
+        margin: 0;
+    }
+    .user-info {
+        background: #fff;
+        border-radius: 10px;
+        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+        padding: 20px 24px;
+        margin-bottom: 32px;
+        display: flex;
+        gap: 32px;
+        align-items: center;
+    }
+    .user-info span {
+        font-size: 14px;
+        color: #374151;
+    }
+    .user-info strong {
+        color: #111827;
+    }
+    .nav-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: 16px;
+    }
+    .nav-card {
+        background: #fff;
+        border-radius: 10px;
+        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+        padding: 24px;
+        text-decoration: none;
+        color: #1f2937;
+        display: block;
+        transition: box-shadow 0.15s, transform 0.15s;
+    }
+    .nav-card:hover {
+        box-shadow: 0 16px 40px rgba(15, 23, 42, 0.14);
+        transform: translateY(-2px);
+    }
+    .nav-card h3 {
+        margin: 0 0 6px;
+        font-size: 16px;
+    }
+    .nav-card p {
+        margin: 0;
+        font-size: 13px;
+        color: #6b7280;
+    }
+    .nav-card-danger {
+        border-left: 4px solid #dc2626;
+    }
+    .nav-card-danger h3 { color: #dc2626; }
+    .nav-card-admin {
+        border-left: 4px solid #7c3aed;
+    }
+    .nav-card-admin h3 { color: #7c3aed; }
+    .logout-link {
+        display: inline-block;
+        margin-top: 32px;
+        color: #6b7280;
+        font-size: 14px;
+        text-decoration: none;
+    }
+    .logout-link:hover { color: #dc2626; }
+</style>
+
+<div class="page-header">
     <h1>Dashboard</h1>
-    <p>Welcome, {{ session['user_name'] }}</p>
-    <p>Employee ID: {{ session['employee_id'] }}</p>
-    <p>Role: {{ session['user_role'] }}</p>
-    <ul>
-        <li><a href="{{ url_for('view_customers') }}">View Customers</a></li>
-        <li><a href="{{ url_for('view_transactions') }}">View Transactions</a></li>
-        <li><a href="{{ url_for('suspicious_transactions') }}">Suspicious Transactions</a></li>
-        {% if session['user_role'] == 'admin' %}
-        <li><a href="{{ url_for('admin') }}">Admin Panel</a></li>
-        {% endif %}
-        <li><a href="{{ url_for('logout') }}">Logout</a></li>
-    </ul>
+    <p>Fraud Detection & Transaction Management System</p>
+</div>
+
+<div class="user-info">
+    <span><strong>Name:</strong> {{ session['user_name'] }}</span>
+    <span><strong>Employee ID:</strong> {{ session['employee_id'] }}</span>
+    <span><strong>Role:</strong> {{ session['user_role']|capitalize }}</span>
+</div>
+
+<div class="nav-grid">
+    <a class="nav-card" href="{{ url_for('view_customers') }}">
+        <h3>Customers</h3>
+        <p>View and manage customer accounts</p>
+    </a>
+    <a class="nav-card" href="{{ url_for('view_transactions') }}">
+        <h3>Transactions</h3>
+        <p>Browse all credit card transactions</p>
+    </a>
+    <a class="nav-card nav-card-danger" href="{{ url_for('suspicious_transactions') }}">
+        <h3>Suspicious Transactions</h3>
+        <p>Review high-risk transactions needing action</p>
+    </a>
+    <a class="nav-card nav-card-danger" href="{{ url_for('fraud_reports') }}">
+        <h3>Fraud Reports</h3>
+        <p>View and resolve confirmed fraud cases</p>
+    </a>
+    {% if session['user_role'] == 'admin' %}
+    <a class="nav-card nav-card-admin" href="{{ url_for('admin') }}">
+        <h3>Admin Panel</h3>
+        <p>Manage employees and system settings</p>
+    </a>
+    {% endif %}
+</div>
+
+<a class="logout-link" href="{{ url_for('logout') }}">← Logout</a>
+
 {% endblock %}

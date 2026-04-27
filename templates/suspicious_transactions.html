@@ -130,14 +130,11 @@
         <td><span class="risk-badge">{{ transaction.risk_reason }}</span></td>
         <td>
             <form action="{{ url_for('clear_suspicious_transaction', transaction_id=transaction.transaction_id) }}" method="POST" style="display:inline">
-                <button type="submit">Clear</button>
+                <button type="submit">Clear Alert</button>
             </form>
-            <button type="button"
-                data-transaction-id="{{ transaction.transaction_id }}"
-                data-action-url="{{ url_for('delete_suspicious_transaction', transaction_id=transaction.transaction_id) }}"
-                onclick="openDeleteModal(this.dataset.transactionId, this.dataset.actionUrl)">
-                Delete
-            </button>
+            <form action="{{ url_for('flag_as_fraud', transaction_id=transaction.transaction_id) }}" method="POST" style="display:inline">
+                <button type="submit">Flag as Fraud</button>
+            </form>
         </td>
     </tr>
     {% endfor %}
@@ -148,33 +145,4 @@
     <p>Only high risk items are shown here, so lower risk activity is hidden from this page.</p>
 </div>
 {% endif %}
-
-<!-- Delete confirmation modal -->
-<div class="modal-backdrop" id="deleteModal">
-    <div class="modal-box">
-        <h3>Delete Transaction?</h3>
-        <p id="deleteModalText">This will permanently remove the transaction and all associated fraud alerts. This cannot be undone.</p>
-        <div class="modal-actions">
-            <button onclick="closeDeleteModal()">Cancel</button>
-            <form id="deleteForm" method="POST">
-                <button type="submit">Yes, Delete</button>
-            </form>
-        </div>
-    </div>
-</div>
-
-<script>
-    function openDeleteModal(transactionId, actionUrl) {
-        document.getElementById('deleteModalText').textContent =
-            'This will permanently remove transaction #' + transactionId + ' and all associated fraud alerts. This cannot be undone.';
-        document.getElementById('deleteForm').action = actionUrl;
-        document.getElementById('deleteModal').classList.add('active');
-    }
-    function closeDeleteModal() {
-        document.getElementById('deleteModal').classList.remove('active');
-    }
-    document.getElementById('deleteModal').addEventListener('click', function(e) {
-        if (e.target === this) closeDeleteModal();
-    });
-</script>
 {% endblock %}
