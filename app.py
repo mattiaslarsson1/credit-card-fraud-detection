@@ -8,6 +8,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 load_dotenv()
 
+SECURITY_DEPARTMENT = 'security'
+
 app = Flask(__name__)
 app.secret_key = os.environ["FLASK_SECRET_KEY"]
 app.config["SESSION_PERMANENT"] = False
