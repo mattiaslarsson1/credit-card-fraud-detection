@@ -386,36 +386,54 @@ def suspicious_transactions():
 
     transactions = get_high_risk_transactions()
 
-    return render_template("suspicious_transactions.html", transactions=transactions, threshold=HIGH_RISK_AMOUNT_THRESHOLD)
+    return render_template_string("""
+    <html>
+    <head><title>Suspicious Transactions</title></head>
+    <body>
+        <h1>Suspicious Transactions</h1>
+        <p><a href="{{ url_for('dashboard') }}">Back to Dashboard</a></p>
 
+        <p>
+            Showing {{ transactions|length }} high-risk transaction{{ '' if transactions|length == 1 else 's' }}.
+        </p>
 
-@app.route("/suspicious-transactions/<int:transaction_id>/clear", methods=["POST"])
-def clear_suspicious_transaction(transaction_id):
-    if "user_email" not in session:
-        return redirect(url_for("login"))
+        <table border="1" cellpadding="8">
+            <tr>
+                <th>transaction_id</th>
+                <th>card_id</th>
+                <th>merchant_id</th>
+                <th>device_id</th>
+                <th>transaction_amount</th>
+                <th>transaction_date</th>
+                <th>transaction_location</th>
+                <th>transaction_status</th>
+                <th>alert_status</th>
+                <th>risk_reason</th>
+            </tr>
 
-    # Resolve all open fraud alerts for this transaction
-    supabase.table("fraud_alert").update({"alert_status": "resolved"}).eq("transaction_id", transaction_id).execute()
+            {% for transaction in transactions %}
+            <tr>
+                <td>{{ transaction.transaction_id }}</td>
+                <td>{{ transaction.card_id }}</td>
+                <td>{{ transaction.merchant_id }}</td>
+                <td>{{ transaction.device_id }}</td>
+                <td>{{ transaction.transaction_amount }}</td>
+                <td>{{ transaction.transaction_date }}</td>
+                <td>{{ transaction.transaction_location }}</td>
+                <td>{{ transaction.transaction_status }}</td>
+                <td>{{ transaction.alert_status }}</td>
+                <td>{{ transaction.risk_reason }}</td>
+            </tr>
+            {% endfor %}
+        </table>
 
-    # Mark the transaction itself as cleared
-    supabase.table("transaction").update({"transaction_status": "cleared"}).eq("transaction_id", transaction_id).execute()
+        {% if transactions|length == 0 %}
+            <p>No suspicious transactions found.</p>
+        {% endif %}
+    </body>
+    </html>
+    """, transactions=transactions)
 
-    return redirect(url_for("suspicious_transactions"))
-
-
-@app.route("/suspicious-transactions/<int:transaction_id>/delete", methods=["POST"])
-def delete_suspicious_transaction(transaction_id):
-    if "user_email" not in session:
-        return redirect(url_for("login"))
-
-    # Delete associated records first (foreign key constraints)
-    supabase.table("fraud_alert").delete().eq("transaction_id", transaction_id).execute()
-    supabase.table("fraud_report").delete().eq("transaction_id", transaction_id).execute()
-
-    # Delete the transaction
-    supabase.table("transaction").delete().eq("transaction_id", transaction_id).execute()
-
-    return redirect(url_for("suspicious_transactions"))
 
 
 @app.route("/logout")
