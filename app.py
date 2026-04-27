@@ -1,6 +1,4 @@
 import os
-import json
-import uuid
 from flask import Flask, request, redirect, session, url_for, render_template, render_template_string
 from dotenv import load_dotenv
 from supabase import create_client, Client
@@ -13,71 +11,33 @@ app.secret_key = os.environ["FLASK_SECRET_KEY"]
 app.config["SESSION_PERMANENT"] = False
 
 url = os.environ["SUPABASE_URL"]
-key = os.environ["SUPABASE_KEY"]
+key = os.environ["SUPABASE_SERVICE_KEY"]
 
 supabase: Client = create_client(url, key)
 def require_login():
     return "user_email" in session
 
 
-def start_user_session(user):
-    session.clear()
-    session.permanent = False
-    session["user_email"] = user["email"]
-    session["user_name"] = f"{user['first_name']} {user['last_name']}"
-    session["user_role"] = user["role"]
-    session["employee_id"] = user["employee_id"]
-    session["browser_session_token"] = uuid.uuid4().hex
+SECURITY_DEPARTMENT = "security"
+
+def get_role_for_employee(employee_id):
+    if not employee_id:
+        return "analyst"
+    employee = (
+        supabase.table("employees")
+        .select("department")
+        .eq("employee_id", employee_id)
+        .execute()
+        .data
+    )
+    if not employee:
+        return "analyst"
+    department = (employee[0].get("department") or "").strip().lower()
+    return "admin" if department == SECURITY_DEPARTMENT else "analyst"
 
 
-def authenticated_response_guard():
-    if "user_email" not in session:
-        return ""
-
-    token = json.dumps(session.get("browser_session_token", ""))
-    logout_url = json.dumps(url_for("logout"))
-
-    return f"""
-        <script>
-            (function () {{
-                var key = "bankFraudSessionToken";
-                var expectedToken = {token};
-
-                function endRestoredSession() {{
-                    if (window.sessionStorage.getItem(key) !== expectedToken) {{
-                        window.location.replace({logout_url});
-                    }}
-                }}
-
-                endRestoredSession();
-                window.addEventListener("pageshow", function (event) {{
-                    if (event.persisted) {{
-                        endRestoredSession();
-                    }}
-                }});
-            }})();
-        </script>
-    """
-
-
-@app.after_request
-def prevent_private_page_cache(response):
-    if "user_email" in session:
-        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-        response.headers["Pragma"] = "no-cache"
-        response.headers["Expires"] = "0"
-
-        if response.content_type.startswith("text/html"):
-            body = response.get_data(as_text=True)
-            guard = authenticated_response_guard()
-            if "</body>" in body:
-                body = body.replace("</body>", guard + "\n</body>")
-            else:
-                body += guard
-            response.set_data(body)
-            response.headers["Content-Length"] = str(len(response.get_data()))
-
-    return response
+def require_admin():
+    return "user_email" in session and session.get("user_role") == "admin"
 
 
 def safe_get(row, *keys, default=""):
@@ -166,18 +126,11 @@ def index():
 
 @app.route("/dev-login")
 def dev_login():
-    start_user_session({
-        "email": "dev@test.com",
-        "first_name": "Dev",
-        "last_name": "User",
-        "role": "admin",
-        "employee_id": "EMP001"
-    })
-    return render_template(
-        "login_success.html",
-        session_token=session["browser_session_token"],
-        next_url=url_for("dashboard")
-    )
+    session["user_email"] = "dev@test.com"
+    session["user_name"] = "Dev User"
+    session["user_role"] = "admin"
+    session["employee_id"] = "EMP001"
+    return redirect(url_for("dashboard"))
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
@@ -253,12 +206,11 @@ def login():
             elif not check_password_hash(user["password_hash"], password):
                 message = "Incorrect password."
             else:
-                start_user_session(user)
-                return render_template(
-                    "login_success.html",
-                    session_token=session["browser_session_token"],
-                    next_url=url_for("dashboard")
-                )
+                session["user_email"] = user["email"]
+                session["user_name"] = f"{user['first_name']} {user['last_name']}"
+                session["user_role"] = get_role_for_employee(user["employee_id"])
+                session["employee_id"] = user["employee_id"]
+                return redirect(url_for("dashboard"))
 
     return render_template("login.html", message=message)
 
@@ -386,54 +338,157 @@ def suspicious_transactions():
 
     transactions = get_high_risk_transactions()
 
-    return render_template_string("""
-    <html>
-    <head><title>Suspicious Transactions</title></head>
-    <body>
-        <h1>Suspicious Transactions</h1>
-        <p><a href="{{ url_for('dashboard') }}">Back to Dashboard</a></p>
+    return render_template("suspicious_transactions.html", transactions=transactions, threshold=HIGH_RISK_AMOUNT_THRESHOLD)
 
-        <p>
-            Showing {{ transactions|length }} high-risk transaction{{ '' if transactions|length == 1 else 's' }}.
-        </p>
 
-        <table border="1" cellpadding="8">
-            <tr>
-                <th>transaction_id</th>
-                <th>card_id</th>
-                <th>merchant_id</th>
-                <th>device_id</th>
-                <th>transaction_amount</th>
-                <th>transaction_date</th>
-                <th>transaction_location</th>
-                <th>transaction_status</th>
-                <th>alert_status</th>
-                <th>risk_reason</th>
-            </tr>
+@app.route("/suspicious-transactions/<int:transaction_id>/clear", methods=["POST"])
+def clear_suspicious_transaction(transaction_id):
+    if "user_email" not in session:
+        return redirect(url_for("login"))
 
-            {% for transaction in transactions %}
-            <tr>
-                <td>{{ transaction.transaction_id }}</td>
-                <td>{{ transaction.card_id }}</td>
-                <td>{{ transaction.merchant_id }}</td>
-                <td>{{ transaction.device_id }}</td>
-                <td>{{ transaction.transaction_amount }}</td>
-                <td>{{ transaction.transaction_date }}</td>
-                <td>{{ transaction.transaction_location }}</td>
-                <td>{{ transaction.transaction_status }}</td>
-                <td>{{ transaction.alert_status }}</td>
-                <td>{{ transaction.risk_reason }}</td>
-            </tr>
-            {% endfor %}
-        </table>
+    # Resolve all open fraud alerts for this transaction
+    supabase.table("fraud_alert").update({"alert_status": "resolved"}).eq("transaction_id", transaction_id).execute()
 
-        {% if transactions|length == 0 %}
-            <p>No suspicious transactions found.</p>
-        {% endif %}
-    </body>
-    </html>
-    """, transactions=transactions)
+    # Mark the transaction itself as cleared
+    supabase.table("transaction").update({"transaction_status": "cleared"}).eq("transaction_id", transaction_id).execute()
 
+    return redirect(url_for("suspicious_transactions"))
+
+
+@app.route("/suspicious-transactions/<int:transaction_id>/delete", methods=["POST"])
+def delete_suspicious_transaction(transaction_id):
+    if "user_email" not in session:
+        return redirect(url_for("login"))
+
+    # Delete associated records first (foreign key constraints)
+    supabase.table("fraud_alert").delete().eq("transaction_id", transaction_id).execute()
+    supabase.table("fraud_report").delete().eq("transaction_id", transaction_id).execute()
+
+    # Delete the transaction
+    supabase.table("transaction").delete().eq("transaction_id", transaction_id).execute()
+
+    return redirect(url_for("suspicious_transactions"))
+
+
+@app.route("/admin")
+def admin():
+    if "user_email" not in session:
+        return redirect(url_for("login"))
+    if not require_admin():
+        return "Access denied.", 403
+
+    users = supabase.table("app_user").select("*").execute().data or []
+    employees = supabase.table("employees").select("*").execute().data or []
+    message = request.args.get("message", "")
+    return render_template("admin.html", users=users, employees=employees, message=message)
+
+
+@app.route("/admin/users/<path:user_email>/verify", methods=["POST"])
+def admin_verify_user(user_email):
+    if not require_admin():
+        return "Access denied.", 403
+
+    verified = request.form.get("verified") == "1"
+    supabase.table("app_user").update({"employee_id_verified": verified}).eq("email", user_email).execute()
+    return redirect(url_for("admin"))
+
+
+@app.route("/admin/users/<path:user_email>/toggle-active", methods=["POST"])
+def admin_toggle_active(user_email):
+    if not require_admin():
+        return "Access denied.", 403
+
+    user = supabase.table("app_user").select("is_active").eq("email", user_email).execute().data
+    if user:
+        new_status = not user[0].get("is_active", True)
+        supabase.table("app_user").update({"is_active": new_status}).eq("email", user_email).execute()
+    return redirect(url_for("admin"))
+
+
+@app.route("/admin/users/<path:user_email>/delete", methods=["POST"])
+def admin_delete_user(user_email):
+    if not require_admin():
+        return "Access denied.", 403
+
+    if user_email == session.get("user_email"):
+        return redirect(url_for("admin", message="You cannot delete your own account."))
+
+    supabase.table("app_user").delete().eq("email", user_email).execute()
+    return redirect(url_for("admin", message=f"Deleted user {user_email}."))
+
+
+@app.route("/admin/users/add", methods=["POST"])
+def admin_create_user():
+    if not require_admin():
+        return "Access denied.", 403
+
+    employee_id = request.form.get("employee_id", "").strip()
+    first_name = request.form.get("firstname", "").strip()
+    last_name = request.form.get("lastname", "").strip()
+    email = request.form.get("email", "").strip().lower()
+    password = request.form.get("password", "")
+
+    if not all([employee_id, first_name, last_name, email, password]):
+        return redirect(url_for("admin", message="All fields are required to create a user."))
+
+    employee_check = supabase.table("employees").select("employee_id").eq("employee_id", employee_id).execute()
+    if not employee_check.data:
+        return redirect(url_for("admin", message=f"Employee ID {employee_id} not found."))
+
+    existing = supabase.table("app_user").select("email").eq("email", email).execute()
+    if existing.data:
+        return redirect(url_for("admin", message=f"User {email} already exists."))
+
+    supabase.table("app_user").insert({
+        "employee_id": employee_id,
+        "first_name": first_name,
+        "last_name": last_name,
+        "email": email,
+        "password_hash": generate_password_hash(password),
+        "role": "analyst",
+        "employee_id_verified": True,
+        "is_active": True,
+    }).execute()
+    return redirect(url_for("admin", message=f"Created user {email}."))
+
+
+@app.route("/admin/employees/add", methods=["POST"])
+def admin_create_employee():
+    if not require_admin():
+        return "Access denied.", 403
+
+    employee_id = request.form.get("employee_id", "").strip()
+    first_name = request.form.get("firstname", "").strip()
+    last_name = request.form.get("lastname", "").strip()
+    department = request.form.get("department", "").strip()
+
+    if not all([employee_id, first_name, last_name, department]):
+        return redirect(url_for("admin", message="All fields are required to create an employee."))
+
+    existing = supabase.table("employees").select("employee_id").eq("employee_id", employee_id).execute()
+    if existing.data:
+        return redirect(url_for("admin", message=f"Employee {employee_id} already exists."))
+
+    supabase.table("employees").insert({
+        "employee_id": employee_id,
+        "firstname": first_name,
+        "lastname": last_name,
+        "department": department,
+    }).execute()
+    return redirect(url_for("admin", message=f"Created employee {employee_id}."))
+
+
+@app.route("/admin/employees/<employee_id>/delete", methods=["POST"])
+def admin_delete_employee(employee_id):
+    if not require_admin():
+        return "Access denied.", 403
+
+    if employee_id == session.get("employee_id"):
+        return redirect(url_for("admin", message="You cannot delete your own employee record."))
+
+    supabase.table("app_user").delete().eq("employee_id", employee_id).execute()
+    supabase.table("employees").delete().eq("employee_id", employee_id).execute()
+    return redirect(url_for("admin", message=f"Deleted employee {employee_id}."))
 
 
 @app.route("/logout")
