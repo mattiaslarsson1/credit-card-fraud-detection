@@ -1,0 +1,248 @@
+{% extends "base.html" %}
+{% block title %}Admin Panel{% endblock %}
+{% block content %}
+<style>
+    body {
+        background: #f4f7fb;
+        color: #1f2937;
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 32px;
+    }
+    .page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 24px;
+    }
+    .back-link { color: #2563eb; text-decoration: none; }
+    .summary-card {
+        background: #fff;
+        border-left: 5px solid #2563eb;
+        border-radius: 10px;
+        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+        margin-bottom: 24px;
+        padding: 20px;
+    }
+    .summary-card h2 { color: #2563eb; margin: 0 0 8px; }
+    .flash {
+        background: #ecfeff;
+        border: 1px solid #a5f3fc;
+        border-radius: 8px;
+        color: #155e75;
+        margin-bottom: 20px;
+        padding: 12px 16px;
+    }
+    h2.section-title {
+        color: #111827;
+        margin: 32px 0 12px;
+    }
+    table {
+        background: #fff;
+        border-collapse: collapse;
+        border-radius: 10px;
+        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+        overflow: hidden;
+        width: 100%;
+    }
+    th, td {
+        border-bottom: 1px solid #e5e7eb;
+        padding: 12px 14px;
+        text-align: left;
+        vertical-align: middle;
+    }
+    th {
+        background: #111827;
+        color: #fff;
+        font-size: 13px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+    tr:last-child td { border-bottom: none; }
+    .badge {
+        border-radius: 999px;
+        display: inline-block;
+        font-size: 12px;
+        font-weight: bold;
+        padding: 4px 10px;
+    }
+    .badge-green { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
+    .badge-red   { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+    .badge-yellow{ background: #fef9c3; color: #92400e; border: 1px solid #fde68a; }
+    .badge-blue  { background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; }
+    .badge-grey  { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; }
+    .action-form { display: inline; }
+    .btn {
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 13px;
+        padding: 6px 12px;
+    }
+    .btn-primary   { background: #2563eb; color: #fff; }
+    .btn-danger    { background: #dc2626; color: #fff; }
+    .btn-secondary { background: #6b7280; color: #fff; }
+    .btn-success   { background: #059669; color: #fff; }
+    .create-form {
+        background: #fff;
+        border-radius: 10px;
+        box-shadow: 0 10px 30px rgba(15,23,42,0.08);
+        display: grid;
+        gap: 12px;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        margin-bottom: 16px;
+        padding: 20px;
+    }
+    .create-form input, .create-form select {
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        font-size: 14px;
+        padding: 8px 10px;
+        width: 100%;
+        box-sizing: border-box;
+    }
+    .create-form .submit-cell {
+        align-self: end;
+    }
+</style>
+
+<div class="page-header">
+    <div>
+        <h1>Admin Panel</h1>
+        <p>Manage employees and portal users. Admin access is granted only to employees in the <strong>Security</strong> department.</p>
+    </div>
+    <a class="back-link" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
+</div>
+
+{% if message %}
+<div class="flash">{{ message }}</div>
+{% endif %}
+
+<div class="summary-card">
+    <h2>{{ users|length }} App User{{ '' if users|length == 1 else 's' }} &nbsp;|&nbsp; {{ employees|length }} Employee{{ '' if employees|length == 1 else 's' }}</h2>
+    <p>
+        {{ users|selectattr('employee_id_verified', 'equalto', false)|list|length }} pending verification &nbsp;|&nbsp;
+        {{ users|selectattr('is_active', 'equalto', false)|list|length }} inactive
+    </p>
+</div>
+
+<h2 class="section-title">App Users</h2>
+
+<form class="create-form" method="POST" action="{{ url_for('admin_create_user') }}">
+    <input type="text" name="employee_id" placeholder="Employee ID" required>
+    <input type="text" name="first_name" placeholder="First name" required>
+    <input type="text" name="last_name"  placeholder="Last name"  required>
+    <input type="email" name="email"     placeholder="Email"      required>
+    <input type="password" name="password" placeholder="Password" required>
+    <div class="submit-cell"><button class="btn btn-primary" type="submit">Create User</button></div>
+</form>
+
+{% if users %}
+<table>
+    <tr>
+        <th>Name</th>
+        <th>Email</th>
+        <th>Employee ID</th>
+        <th>Verified</th>
+        <th>Active</th>
+        <th>Actions</th>
+    </tr>
+    {% for user in users %}
+    <tr>
+        <td>{{ user.first_name }} {{ user.last_name }}</td>
+        <td>{{ user.email }}</td>
+        <td>{{ user.employee_id }}</td>
+        <td>
+            {% if user.employee_id_verified %}
+                <span class="badge badge-green">Verified</span>
+            {% else %}
+                <span class="badge badge-yellow">Pending</span>
+            {% endif %}
+        </td>
+        <td>
+            {% if user.is_active %}
+                <span class="badge badge-green">Active</span>
+            {% else %}
+                <span class="badge badge-red">Inactive</span>
+            {% endif %}
+        </td>
+        <td style="white-space: nowrap;">
+            {% if not user.employee_id_verified %}
+            <form class="action-form" method="POST" action="{{ url_for('admin_verify_user', user_email=user.email) }}">
+                <input type="hidden" name="verified" value="1">
+                <button class="btn btn-success" type="submit">Verify</button>
+            </form>
+            {% else %}
+            <form class="action-form" method="POST" action="{{ url_for('admin_verify_user', user_email=user.email) }}">
+                <input type="hidden" name="verified" value="0">
+                <button class="btn btn-secondary" type="submit">Unverify</button>
+            </form>
+            {% endif %}
+            &nbsp;
+            <form class="action-form" method="POST" action="{{ url_for('admin_toggle_active', user_email=user.email) }}">
+                {% if user.is_active %}
+                    <button class="btn btn-secondary" type="submit">Deactivate</button>
+                {% else %}
+                    <button class="btn btn-primary" type="submit">Activate</button>
+                {% endif %}
+            </form>
+            &nbsp;
+            <form class="action-form" method="POST"
+                  action="{{ url_for('admin_delete_user', user_email=user.email) }}"
+                  onsubmit="return confirm('Delete user {{ user.email }}?');">
+                <button class="btn btn-danger" type="submit">Delete</button>
+            </form>
+        </td>
+    </tr>
+    {% endfor %}
+</table>
+{% else %}
+<p>No app users yet.</p>
+{% endif %}
+
+<h2 class="section-title">Employees</h2>
+
+<form class="create-form" method="POST" action="{{ url_for('admin_create_employee') }}">
+    <input type="text" name="employee_id" placeholder="Employee ID" required>
+    <input type="text" name="firstname"   placeholder="First name" required>
+    <input type="text" name="lastname"    placeholder="Last name"  required>
+    <input type="text" name="department"  placeholder="Department (e.g. security)" required>
+    <div class="submit-cell"><button class="btn btn-primary" type="submit">Create Employee</button></div>
+</form>
+
+{% if employees %}
+<table>
+    <tr>
+        <th>Employee ID</th>
+        <th>Name</th>
+        <th>Department</th>
+        <th>Admin</th>
+        <th>Actions</th>
+    </tr>
+    {% for emp in employees %}
+    <tr>
+        <td>{{ emp.employee_id }}</td>
+        <td>{{ emp.firstname }} {{ emp.lastname }}</td>
+        <td>{{ emp.department }}</td>
+        <td>
+            {% if (emp.department or '')|lower == 'security' %}
+                <span class="badge badge-blue">Admin</span>
+            {% else %}
+                <span class="badge badge-grey">No</span>
+            {% endif %}
+        </td>
+        <td style="white-space: nowrap;">
+            <form class="action-form" method="POST"
+                  action="{{ url_for('admin_delete_employee', employee_id=emp.employee_id) }}"
+                  onsubmit="return confirm('Delete employee {{ emp.employee_id }}? This will also delete their app user account.');">
+                <button class="btn btn-danger" type="submit">Delete</button>
+            </form>
+        </td>
+    </tr>
+    {% endfor %}
+</table>
+{% else %}
+<p>No employees yet.</p>
+{% endif %}
+
+{% endblock %}
