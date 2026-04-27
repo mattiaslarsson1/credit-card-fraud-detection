@@ -1,6 +1,21 @@
 {% extends "base.html" %}
 {% block title %}Login{% endblock %}
 {% block content %}
+    <script>
+        (function () {
+            var key = "bankFraudSessionToken";
+
+            function clearActiveLogin() {
+                if (window.sessionStorage.getItem(key)) {
+                    window.sessionStorage.removeItem(key);
+                    window.location.replace({{ url_for('logout')|tojson }});
+                }
+            }
+
+            clearActiveLogin();
+            window.addEventListener("pageshow", clearActiveLogin);
+        })();
+    </script>
     <h1>Bank Fraud Portal Login</h1>
     <form method="post">
         <p>Email: <input type="email" name="email"></p>
