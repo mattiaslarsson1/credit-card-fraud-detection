@@ -1,4 +1,6 @@
 import os
+import json
+import uuid
 from flask import Flask, request, redirect, session, url_for, render_template, render_template_string
 from dotenv import load_dotenv
 from supabase import create_client, Client
@@ -8,6 +10,7 @@ load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.environ["FLASK_SECRET_KEY"]
+app.config["SESSION_PERMANENT"] = False
 
 url = os.environ["SUPABASE_URL"]
 key = os.environ["SUPABASE_SERVICE_KEY"]
@@ -17,7 +20,6 @@ def require_login():
     return "user_email" in session
 
 
-SECURITY_DEPARTMENT = "security"
 
 
 def get_role_for_employee(employee_id):
@@ -126,11 +128,18 @@ def index():
 
 @app.route("/dev-login")
 def dev_login():
-    session["user_email"] = "dev@test.com"
-    session["user_name"] = "Dev User"
-    session["user_role"] = "admin"
-    session["employee_id"] = "EMP001"
-    return redirect(url_for("dashboard"))
+    start_user_session({
+        "email": "dev@test.com",
+        "first_name": "Dev",
+        "last_name": "User",
+        "role": "admin",
+        "employee_id": "EMP001"
+    })
+    return render_template(
+        "login_success.html",
+        session_token=session["browser_session_token"],
+        next_url=url_for("dashboard")
+    )
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
@@ -183,6 +192,9 @@ def register():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     message = ""
+
+    if request.method == "GET" and "user_email" in session:
+        session.clear()
 
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()
